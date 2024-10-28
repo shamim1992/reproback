@@ -12,12 +12,19 @@ connectDB();
 const app = express();
 // Middleware
 app.use(express.json());
-app.use(cors());
-app.use(function (request, response, next) {
-  response.header("Access-Control-Allow-Origin", "*");
-  response.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-  next();
-});
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',  // Development
+    'https://billingfrontend-sigma.vercel.app' // Add your production domain when deployed
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true, // Enable if you're using cookies/sessions
+  optionsSuccessStatus: 200
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
 // Routes
 app.use('/api', routes);
 const PORT = process.env.PORT || 5000;
