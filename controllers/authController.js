@@ -6,12 +6,12 @@ import Department from '../models/departmentModel.js'
 
 // User signup
 export const registerUser = async (req, res) => {
- 
+
   try {
     const { name, email, password, role, department, specialization, consultationCharges, contactNumber } = req.body;
 
-    const userExists = await User.findOne({email});
-console.log("Existing user : ",userExists)
+    const userExists = await User.findOne({ email });
+    console.log("Existing user : ", userExists)
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
@@ -19,8 +19,8 @@ console.log("Existing user : ",userExists)
 
 
     if (role === 'Doctor') {
-     const departments = await Department.findById(department);
-   
+      const departments = await Department.findById(department);
+
       if (!departments) {
         return res.status(404).json({ message: 'Department not found' });
       }
@@ -30,10 +30,9 @@ console.log("Existing user : ",userExists)
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      
       name,
       email,
-      password: hashedPassword, 
+      password: hashedPassword,
       role,
       contactNumber,
       department: role === 'Doctor' ? department : null,
