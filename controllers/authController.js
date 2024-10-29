@@ -8,7 +8,7 @@ import Department from '../models/departmentModel.js'
 export const registerUser = async (req, res) => {
 
   try {
-    const { name, email, password, role, department, specialization, consultationCharges, contactNumber } = req.body;
+    const { name, username, email, password, role, department, specialization, consultationCharges, contactNumber } = req.body;
 
     const userExists = await User.findOne({ email });
     console.log("Existing user : ", userExists)
@@ -31,6 +31,7 @@ export const registerUser = async (req, res) => {
 
     const user = await User.create({
       name,
+      username,
       email,
       password: hashedPassword,
       role,
@@ -56,10 +57,12 @@ export const registerUser = async (req, res) => {
 
 // User login
 export const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+  const { identifier, password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier }]
+  });
 
     if (!user) {
       return res.status(400).json({ message: 'Invalid email or password' });
