@@ -23,7 +23,7 @@ const patientSchema = new mongoose.Schema({
   membershipType: String,
   nationality: { type: String, default: 'India' },
   patientSource: String,
-  researchPatient: { type: Boolean, default: false },
+  researchPatient: { type: String, },
   registrationDate: { type: String },
   registeredPatient: {
     type: Boolean,
@@ -35,8 +35,6 @@ const patientSchema = new mongoose.Schema({
     enum: ['Unpaid', 'Partially Paid', 'Paid'],
     default: 'Unpaid',
   },
-  // Reference to billing model
-  // Unique patient ID
   patientId: { type: String, required: true, unique: true },
 });
 

@@ -1,39 +1,87 @@
-// /controllers/patientController.js
+// import Patient from '../models/patientModel.js';
+// import Counter from '../models/counterModel.js';
+// const getNextPatientId = async () => {
+//   const initialId = 3333000000000001;
+//   const counter = await Counter.findOneAndUpdate(
+//     { id: 'patientId' },
+//     { $inc: { sequenceValue: 1 } },
+//     { new: true, upsert: true }
+//   );
+
+//   const nextId = initialId + counter.sequenceValue;
+//   return nextId;
+// };
+// export const createPatient = async (req, res) => {
+//   try {
+//     const patientId = await getNextPatientId();
+//     const newPatient = new Patient({
+//       ...req.body,
+//       patientId,
+//     });
+//     const savedPatient = await newPatient.save();
+//     res.status(201).json(savedPatient);
+//   } catch (error) {
+//     console.error('Error creating patient:', error);
+//     res.status(500).json({ message: 'Failed to create patient', error: error.message });
+//   }
+// };
+
 import Patient from '../models/patientModel.js';
 import Counter from '../models/counterModel.js';
 
-
 const getNextPatientId = async () => {
-  const initialId = 3333000000000001; // Starting ID
-
+  const initialId = 3333000000000001;
   const counter = await Counter.findOneAndUpdate(
-    { id: 'patientId' }, // Find the counter with id 'patientId'
-    { $inc: { sequenceValue: 1 } }, // Increment the sequence value by 1
-    { new: true, upsert: true } // Create the counter if it doesn't exist
+    { id: 'patientId' },
+    { $inc: { sequenceValue: 1 } },
+    { new: true, upsert: true }
   );
 
-  const nextId = initialId + counter.sequenceValue; // Increment from the initial ID
+  const nextId = initialId + counter.sequenceValue;
   return nextId;
 };
 
-// Create a new patient
 export const createPatient = async (req, res) => {
   try {
-    // Generate the next patient ID
-    const patientId = await getNextPatientId();
+    const existingPatient = await Patient.findOne({
+      emailId: req.body.emailId,
+      mobileNumber: req.body.mobileNumber,
+    });
 
-    // Create a new patient with the incremented patient ID
+    if (existingPatient) {
+      return res.status(409).json({ message: 'User with this email and mobile number already exists' });
+    }
+
+    let patientId;
+
+    // Check if registeredPatient is 'true' and set the patientId accordingly
+    if (req.body.registeredPatient === true) {
+      const counter = await Counter.findOneAndUpdate(
+        { id: 'registeredPatientId' },
+        { $inc: { sequenceValue: 1 } },
+        { new: true, upsert: true }
+      );
+      // Generate the patientId with prefix and padded number
+      patientId = `UNHSR${String(counter.sequenceValue).padStart(6, '0')}`;
+    } else {
+      patientId = await getNextPatientId();
+    }
+
+    
+
     const newPatient = new Patient({
       ...req.body,
-      patientId, // Assign the generated patient ID
+      patientId,
     });
 
     const savedPatient = await newPatient.save();
     res.status(201).json(savedPatient);
   } catch (error) {
+    console.error('Error creating patient:', error);
     res.status(500).json({ message: 'Failed to create patient', error: error.message });
   }
 };
+
 
 // Get all patients
 export const getAllPatients = async (req, res) => {
@@ -89,7 +137,7 @@ export const updatePatient = async (req, res) => {
 // Delete patient
 export const deletePatient = async (req, res) => {
   const { patientId } = req.params;
-console.log(patientId)
+  console.log(patientId)
   try {
     const patient = await Patient.findByIdAndDelete(patientId);
 
