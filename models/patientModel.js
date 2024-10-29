@@ -25,6 +25,10 @@ const patientSchema = new mongoose.Schema({
   patientSource: String,
   researchPatient: { type: Boolean, default: false },
   registrationDate: { type: String },
+  registeredPatient: {
+    type: Boolean,
+    default: false,
+  },
   diagnosis:{type: String},
   paymentStatus: {
     type: String,
