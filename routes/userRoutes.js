@@ -8,7 +8,8 @@ import {
     getUserById,
     updateUser,
     deleteUser, getDoctorById, getDoctorsByDepartment,
-    getDoctors
+    getDoctors,
+    searchDoctor
   } from '../controllers/userController.js';
 const router = express.Router();
 
@@ -30,5 +31,7 @@ router.put('/:userId', authenticateJWT, authorizeRoles('superAdmin'), updateUser
 
 // Delete a user (Super Admin)
 router.delete('/:userId', authenticateJWT, authorizeRoles('superAdmin'), deleteUser);
+router.get('/search', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin', 'superAdmin'), searchDoctor);
+// router.get('/search', searchDoctor);
 
 export default router;

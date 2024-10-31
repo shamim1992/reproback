@@ -1,20 +1,18 @@
 // /routes/billingRoutes.js
 import express from 'express';
-import { createBill, getAllBills, getBillById, updateBillStatus } from '../controllers/billingController.js';
+
 import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
+import { createBilling, getBillings, getBillingById } from '../controllers/billingController.js';
 
 const router = express.Router();
 
-// Create a new bill (Accountant, Admin)
-router.post('/', authenticateJWT, authorizeRoles('Accountant', 'Admin'), createBill);
+// Create a new billing record
+router.post('/', createBilling);
 
-// Get all bills (Accountant, Admin)
-router.get('/', authenticateJWT, authorizeRoles('Accountant', 'Admin'), getAllBills);
+// Get all billing records
+router.get('/', getBillings);
 
-// Get a bill by ID (Accountant, Admin)
-router.get('/:billId', authenticateJWT, authorizeRoles('Accountant', 'Admin'), getBillById);
-
-// Update bill status (Accountant, Admin)
-router.put('/:billId/status', authenticateJWT, authorizeRoles('Accountant', 'Admin'), updateBillStatus);
+// Get a specific billing record by ID
+router.get('/:id', getBillingById);
 
 export default router;

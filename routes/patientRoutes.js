@@ -6,6 +6,7 @@ import {
   getPatientById,
   updatePatient,
   deletePatient,
+  searchPatients,
 } from '../controllers/patientController.js';
 import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
 
@@ -25,5 +26,7 @@ router.put('/:patientId', authenticateJWT, authorizeRoles('Receptionist', 'Admin
 
 // Delete a patient (Admin)
 router.delete('/:patientId', authenticateJWT, authorizeRoles('Admin','superAdmin'), deletePatient);
+
+router.get('/search', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin', 'superAdmin'), searchPatients);
 
 export default router;

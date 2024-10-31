@@ -157,3 +157,59 @@ export const getDoctors = async (req, res) => {
 //     res.status(500).json({ message: 'Error fetching doctor', error });
 //   }
 // };
+
+// Doctor search
+export const searchDoctor = async (req, res) => {
+  try {
+    const { query, department, specialization } = req.query;
+    console.log(req.query);
+    
+    if (!query && !department && !specialization) {
+      return res.status(400).json({ 
+        message: 'At least one search parameter is required' 
+      });
+    }
+
+    // Build search criteria
+    const searchCriteria = {
+      role: 'Doctor', // Ensure only doctors are returned
+      isActive: true  // Only return active doctors
+    };
+
+    if (query) {
+      searchCriteria.$or = [
+        { name: { $regex: query, $options: 'i' } },
+        { contactNumber: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    if (department) {
+      searchCriteria.department = department;
+    }
+
+    if (specialization) {
+      searchCriteria.specialization = { 
+        $regex: specialization, 
+        $options: 'i' 
+      };
+    }
+
+    const doctors = await User.find(searchCriteria)
+      .populate('department', 'name')
+      .select('-password')  // Exclude sensitive data
+      .limit(10)
+      .sort({ name: 1 });  // Sort results alphabetically
+
+    res.status(200).json({
+      count: doctors.length,
+      doctors
+    });
+  } catch (error) {
+    console.error('Search doctor error:', error);
+    res.status(500).json({ 
+      message: 'Error searching doctors',
+      error: error.message 
+    });
+  }
+}

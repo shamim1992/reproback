@@ -1,70 +1,53 @@
-// /controllers/billingController.js
+// controllers/billingController.js
 import Billing from '../models/billingModel.js';
 
-// Create a bill for a patient
-export const createBill = async (req, res) => {
-  const { patientId, services } = req.body;
-
+// Create a new billing record
+export const createBilling = async (req, res) => {
   try {
-    const totalAmount = services.reduce((total, service) => total + service.cost, 0);
+    const { patientId, doctorId, billingItems, discount, payment, remarks, totals } = req.body;
 
-    const bill = new Billing({
-      patient: patientId,
-      services,
-      totalAmount,
-      paymentStatus: 'Pending',
+    const newBilling = new Billing({
+      patientId,
+      doctorId,
+      billingItems,
+      discount,
+      payment,
+      remarks,
+      totals
     });
 
-    await bill.save();
-    return res.status(201).json({ message: 'Bill created successfully', bill });
+    await newBilling.save();
+    res.status(201).json({ message: 'Billing record created successfully', billing: newBilling });
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Error creating billing record:', error);
+    res.status(500).json({ message: 'Server error', error });
   }
 };
 
-// Get all bills
-export const getAllBills = async (req, res) => {
+// Get all billing records
+export const getBillings = async (req, res) => {
   try {
-    const bills = await Billing.find().populate('patient');
-    return res.status(200).json({ bills });
+    const billings = await Billing.find()
+      .populate('patientId', 'firstName lastName')
+      .populate('doctorId', 'name');
+    res.status(200).json(billings);
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Error fetching billing records:', error);
+    res.status(500).json({ message: 'Server error', error });
   }
 };
 
-// Get bill by ID
-export const getBillById = async (req, res) => {
-  const { billId } = req.params;
-
+// Get a single billing record by ID
+export const getBillingById = async (req, res) => {
   try {
-    const bill = await Billing.findById(billId).populate('patient');
-
-    if (!bill) {
-      return res.status(404).json({ message: 'Bill not found' });
-    }
-
-    return res.status(200).json({ bill });
+    const { id } = req.params;
+    const billing = await Billing.findById(id)
+      .populate('patientId', 'firstName lastName')
+      .populate('doctorId', 'name');
+    if (!billing) return res.status(404).json({ message: 'Billing record not found' });
+    res.status(200).json(billing);
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
-  }
-};
-
-// Update bill status
-export const updateBillStatus = async (req, res) => {
-  const { billId } = req.params;
-  const { paymentStatus } = req.body;
-
-  try {
-    const bill = await Billing.findById(billId);
-
-    if (!bill) {
-      return res.status(404).json({ message: 'Bill not found' });
-    }
-
-    bill.paymentStatus = paymentStatus;
-    await bill.save();
-    return res.status(200).json({ message: 'Bill updated successfully', bill });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Error fetching billing record:', error);
+    res.status(500).json({ message: 'Server error', error });
   }
 };

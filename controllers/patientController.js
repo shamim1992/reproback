@@ -151,3 +151,32 @@ export const deletePatient = async (req, res) => {
     return res.status(500).json({ message: 'Server error', error });
   }
 };
+
+// Patient search
+export const searchPatients = async (req, res) => {
+  try {
+    const { query } = req.query;
+    console.log("Received query:", query);  // Debug log
+    if (!query) {
+      console.log("No query provided");  // Log if query is missing
+      return res.json([]);
+    }
+
+    console.log("Searching for patients with query:", query);  // Debug log
+
+    const patients = await Patient.find({
+      $or: [
+        { firstName: { $regex: query, $options: 'i' } },
+        { lastName: { $regex: query, $options: 'i' } },
+        { patientId: { $regex: query, $options: 'i' } },
+        { mobileNumber: { $regex: query, $options: 'i' } },
+      ],
+    }).limit(10);
+
+    console.log("Found patients:", patients);  // Debug log
+    res.json(patients);
+  } catch (error) {
+    console.error('Error searching patients:', error);  // Log detailed error
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
