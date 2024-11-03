@@ -5,7 +5,7 @@ import Billing from '../models/billingModel.js';
 export const createBilling = async (req, res) => {
   try {
     const { patientId, doctorId, billingItems, discount, payment, remarks, totals } = req.body;
-
+console.log(req.body);
     const newBilling = new Billing({
       patientId,
       doctorId,
@@ -28,7 +28,7 @@ export const createBilling = async (req, res) => {
 export const getBillings = async (req, res) => {
   try {
     const billings = await Billing.find()
-      .populate('patientId', 'firstName lastName')
+      .populate('patientId')
       .populate('doctorId', 'name');
     res.status(200).json(billings);
   } catch (error) {

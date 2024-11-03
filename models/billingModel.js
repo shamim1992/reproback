@@ -12,7 +12,7 @@ const BillingItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const BillingSchema = new mongoose.Schema({
-  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   billingItems: [BillingItemSchema],
   discount: {
@@ -31,7 +31,7 @@ const BillingSchema = new mongoose.Schema({
     balance: { type: Number, required: true }
   },
   date: { type: Date, default: Date.now }
-});
+},{timestamps: true });
 
 const Billing = mongoose.model('Billing', BillingSchema);
 
