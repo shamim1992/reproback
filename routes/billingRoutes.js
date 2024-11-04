@@ -2,17 +2,20 @@
 import express from 'express';
 
 import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
-import { createBilling, getBillings, getBillingById } from '../controllers/billingController.js';
+import { createBilling, getBillings, getBillingById, updateBillingById } from '../controllers/billingController.js';
 
 const router = express.Router();
 
 // Create a new billing record
-router.post('/', createBilling);
+router.post('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin'), createBilling);
 
 // Get all billing records
-router.get('/', getBillings);
+router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin'), getBillings);
 
 // Get a specific billing record by ID
-router.get('/:id', getBillingById);
+router.get('/:id', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin'), getBillingById);
+
+// update a billing record
+router.put('/:id', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin'), updateBillingById);
 
 export default router;
