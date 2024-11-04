@@ -14,23 +14,23 @@ import {
 const router = express.Router();
 
 
-router.get('/doctors/department/:departmentId', authenticateJWT, authorizeRoles('superAdmin'), getDoctorsByDepartment);
+router.get('/doctors/department/:departmentId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getDoctorsByDepartment);
 
 // Get doctor by ID
-router.get('/doctors/:id', authenticateJWT, authorizeRoles('superAdmin'), getDoctorById);
-router.get('/doctors', authenticateJWT, authorizeRoles('superAdmin'), getDoctors);
+router.get('/doctors/:id', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getDoctorById);
+router.get('/doctors', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getDoctors);
 
-router.post('/',authenticateJWT, authorizeRoles('superAdmin'), createUser);
+router.post('/',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), createUser);
 // Get all users (Super Admin)
-router.get('/', authenticateJWT, authorizeRoles('superAdmin'), getAllUsers);
+router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getAllUsers);
 
 // Get a single user by ID (Super Admin)
-router.get('/:id',authenticateJWT, authorizeRoles('superAdmin'), getUserById);
+router.get('/:id',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getUserById);
 // Update a user (Super Admin)
-router.put('/:userId', authenticateJWT, authorizeRoles('superAdmin'), updateUser);
+router.put('/:userId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), updateUser);
 
 // Delete a user (Super Admin)
-router.delete('/:userId', authenticateJWT, authorizeRoles('superAdmin'), deleteUser);
+router.delete('/:userId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), deleteUser);
 router.get('/search', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin', 'superAdmin'), searchDoctor);
 // router.get('/search', searchDoctor);
 

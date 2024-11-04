@@ -16,17 +16,17 @@ const router = express.Router();
 router.post('/', authenticateJWT, authorizeRoles('Receptionist', 'Admin', 'superAdmin'), createPatient);
 
 // Get all patients (Doctors, Receptionist, Admin)
-router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin'), getAllPatients);
+router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getAllPatients);
 
 // Get a patient by ID (Doctors, Receptionist, Admin)
-router.get('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin'), getPatientById);
+router.get('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getPatientById);
 
 // Update a patient (Receptionist, Admin)
-router.put('/:patientId', authenticateJWT, authorizeRoles('Receptionist', 'Admin','superAdmin'), updatePatient);
+router.put('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), updatePatient);
 
 // Delete a patient (Admin)
-router.delete('/:patientId', authenticateJWT, authorizeRoles('Admin','superAdmin'), deletePatient);
+router.delete('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), deletePatient);
 
-router.get('/search', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin', 'superAdmin'), searchPatients);
+router.get('/search',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), searchPatients);
 
 export default router;

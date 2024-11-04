@@ -10,12 +10,12 @@ import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js
 const router = express.Router();
 
 // Generate a new report (Admin, Super Admin)
-router.post('/', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), generateReport);
+router.post('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), generateReport);
 
 // Get all reports (Admin, Super Admin)
-router.get('/', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), getAllReports);
+router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getAllReports);
 
 // Get a report by ID (Admin, Super Admin)
-router.get('/:reportId', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), getReportById);
+router.get('/:reportId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getReportById);
 
 export default router;

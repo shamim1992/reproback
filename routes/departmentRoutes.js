@@ -6,14 +6,15 @@ import {
   updateDepartment,
   deleteDepartment,
 } from '../controllers/departmentController.js';
+import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // Department routes
-router.post('/', createDepartment); // Create a new department
-router.get('/', getAllDepartments); // Get all departments
-router.get('/:id', getDepartmentById); // Get a single department by ID
-router.put('/:id', updateDepartment); // Update a department by ID
-router.delete('/:id', deleteDepartment); // Delete a department by ID
+router.post('/',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), createDepartment); // Create a new department
+router.get('/',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getAllDepartments); // Get all departments
+router.get('/:id',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getDepartmentById); // Get a single department by ID
+router.put('/:id',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), updateDepartment); // Update a department by ID
+router.delete('/:id',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), deleteDepartment); // Delete a department by ID
 
 export default router;
