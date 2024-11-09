@@ -7,7 +7,8 @@ import appointmentRoutes from './appointmentRoutes.js';
 import billingRoutes from './billingRoutes.js';
 import reportRoutes from './reportRoutes.js';
 import deparmentRoutes from './departmentRoutes.js';
-
+import categoryRoutes from './categoryRoutes.js';
+import productRoutes from './productRoutes.js';
 const router = express.Router();
 
 // Mount the routes
@@ -18,5 +19,7 @@ router.use('/appointments', appointmentRoutes);
 router.use('/bills', billingRoutes);
 router.use('/reports', reportRoutes);
 router.use('/department', deparmentRoutes );
+router.use('/category', categoryRoutes);
+router.use('/product', productRoutes);
 
 export default router;

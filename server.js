@@ -17,9 +17,10 @@ const corsOptions = {
     'http://localhost:3000',  // Development
     'https://billingfrontend-sigma.vercel.app' // Add your production domain when deployed
   ],
+  
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true, // Enable if you're using cookies/sessions
+  credentials: true, 
   optionsSuccessStatus: 200
 };
 

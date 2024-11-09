@@ -30,7 +30,13 @@ const BillingSchema = new mongoose.Schema({
     grandTotal: { type: Number, required: true },
     balance: { type: Number, required: true }
   },
-  date: { type: Date, default: Date.now }
+  date: { type: Date, default: Date.now },
+  receiptNumber: { type: String, unique: true },  
+  receiptHistory: [{  
+    receiptNumber: String,
+    date: { type: Date, default: Date.now },
+    billingDetails: Object
+  }]
 },{timestamps: true });
 
 const Billing = mongoose.model('Billing', BillingSchema);

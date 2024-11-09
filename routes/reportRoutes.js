@@ -8,7 +8,6 @@ import {
 import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-
 // Generate a new report (Admin, Super Admin)
 router.post('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), generateReport);
 
