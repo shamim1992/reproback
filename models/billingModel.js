@@ -31,7 +31,7 @@ const BillingSchema = new mongoose.Schema({
     balance: { type: Number, required: true }
   },
   date: { type: Date, default: Date.now },
-  receiptNumber: { type: String, unique: true },  
+  receiptNumber: { type: String, unique: true , index: true},  
   receiptHistory: [{  
     receiptNumber: String,
     date: { type: Date, default: Date.now },
