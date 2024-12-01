@@ -30,6 +30,7 @@ const BillingSchema = new mongoose.Schema({
     grandTotal: { type: Number, required: true },
     balance: { type: Number, required: true }
   },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Add this line
   date: { type: Date, default: Date.now },
   receiptNumber: { type: String, unique: true , index: true},  
   receiptHistory: [{  

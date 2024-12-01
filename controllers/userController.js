@@ -4,7 +4,7 @@ import Department from '../models/departmentModel.js'
 
 export const createUser = async (req, res) => {
   const { name, email, password, role, departmentId, specialization, consultationCharges, contactNumber } = req.body;
-
+console.log(req.body);
   try {
     // If the user is a doctor, check if the department exists
     let department;

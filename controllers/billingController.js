@@ -7,6 +7,70 @@ const generateReceiptNumber = () => {
   return `CHANRE${uniqueId}`;
 };
 
+// export const createBilling = async (req, res) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     const { patientId, doctorId, billingItems, discount, payment, remarks, totals, createdBy } = req.body;
+//     console.log(req.body)
+//     if (!patientId || !doctorId || !billingItems || billingItems.length === 0 || !payment) {
+//       return res.status(400).json({ message: 'Missing required fields' });
+//     }
+
+//     const initialReceiptNumber = generateReceiptNumber();
+    
+ 
+//     const receiptExists = await Billing.findOne({ 
+//       receiptNumber: initialReceiptNumber 
+//     }).session(session);
+
+//     if (receiptExists) {
+//       await session.abortTransaction();
+//       return res.status(409).json({ 
+//         message: 'Receipt number generation conflict. Please try again.' 
+//       });
+//     }
+
+//     const initialBillingDetails = {
+//       patientId,
+//       doctorId,
+//       billingItems,
+//       discount,
+//       payment,
+//       remarks,
+//       totals,
+//       date: new Date(),
+//       createdBy
+//     };
+
+//     const newBilling = new Billing({
+//       ...initialBillingDetails,
+//       receiptNumber: initialReceiptNumber,
+//       receiptHistory: [{
+//         receiptNumber: initialReceiptNumber,
+//         date: new Date(),
+//         billingDetails: initialBillingDetails
+//       }]
+//     });
+
+//     await newBilling.save({ session });
+//     await session.commitTransaction();
+    
+//     res.status(201).json({ 
+//       message: 'Billing record created successfully', 
+//       billing: newBilling 
+//     });
+//   } catch (error) {
+//     await session.abortTransaction();
+//     console.error('Error creating billing record:', error);
+//     res.status(500).json({ message: 'Server error', error });
+//   } finally {
+//     session.endSession();
+//   }
+// };
+
+
 export const createBilling = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -14,13 +78,15 @@ export const createBilling = async (req, res) => {
   try {
     const { patientId, doctorId, billingItems, discount, payment, remarks, totals } = req.body;
     
+    // Get user ID from the decoded token in req.user
+    const userId = req.user.id; // Make sure this matches your token payload structure
+    
     if (!patientId || !doctorId || !billingItems || billingItems.length === 0 || !payment) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
     const initialReceiptNumber = generateReceiptNumber();
     
-    // Verify the receipt number doesn't exist
     const receiptExists = await Billing.findOne({ 
       receiptNumber: initialReceiptNumber 
     }).session(session);
@@ -40,7 +106,8 @@ export const createBilling = async (req, res) => {
       payment,
       remarks,
       totals,
-      date: new Date()
+      date: new Date(),
+      createdBy: userId // Use the ID from the token
     };
 
     const newBilling = new Billing({
@@ -68,12 +135,11 @@ export const createBilling = async (req, res) => {
     session.endSession();
   }
 };
-
 export const getBillings = async (req, res) => {
   try {
     const billings = await Billing.find()
       .populate('patientId')
-      .populate('doctorId', 'name');
+      .populate('doctorId', 'name').populate('createdBy', 'name');;
     res.status(200).json(billings);
   } catch (error) {
     console.error('Error fetching billing records:', error);
