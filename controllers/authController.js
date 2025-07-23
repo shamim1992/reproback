@@ -15,9 +15,6 @@ export const registerUser = async (req, res) => {
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
-
-
-
     if (role === 'Doctor') {
       const departments = await Department.findById(department);
 
@@ -55,7 +52,7 @@ export const registerUser = async (req, res) => {
   }
 };
 
-// User login
+// User login localstorage
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 

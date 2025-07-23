@@ -6,14 +6,12 @@ import { jwtConfig } from '../config/jwt.js';
 // Middleware to verify JWT token
 export const authenticateJWT = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
-
   if (!token) {
     return res.status(401).json({ message: 'Access denied, no token provided' });
   }
-
   try {
     const decoded = jwt.verify(token, jwtConfig.secret);
-    req.user = decoded; // Set the user info in request object
+    req.user = decoded; 
     next();
   } catch (error) {
     return res.status(403).json({ message: 'Invalid token, access denied' });
@@ -29,3 +27,6 @@ export const authorizeRoles = (...roles) => {
     next();
   };
 };
+
+
+

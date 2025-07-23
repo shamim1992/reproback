@@ -10,8 +10,7 @@ router.post('/register', registerUser);
 
 // User login
 router.post('/login', loginUser);
-
 // Get user profile (protected route)
-router.get('/profile', authenticateJWT, getUserProfile);
+router.get('/profile',  getUserProfile);
 
 export default router;

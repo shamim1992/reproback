@@ -63,34 +63,65 @@ export const getUserById = async (req, res) => {
 // Update a user (including doctors)
 export const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { name, email, role, departmentId, specialization, consultationCharges } = req.body;
+  const { name, email, role, department, specialization, consultationCharges, contactNumber } = req.body;
 
   try {
-    let department;
-    if (role === 'Doctor') {
-      department = await Department.findById(departmentId);
-      if (!department) {
-        return res.status(404).json({ message: 'Department not found' });
-      }
+ 
+
+    // First check if user exists
+    const existingUser = await User.findById(id);
+    if (!existingUser) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
+    // Prepare update data
+    const updateData = {
+      name,
+      email,
+      contactNumber
+    };
+
+    // Handle doctor-specific fields
+    if (existingUser.role === 'Doctor') {
+      // Verify department if provided
+      if (department) {
+        const departmentDoc = await Department.findById(department);
+        if (!departmentDoc) {
+          return res.status(404).json({ message: 'Department not found' });
+        }
+        updateData.department = departmentDoc._id;
+      }
+
+      // Only update these fields if they're provided
+      if (specialization) updateData.specialization = specialization;
+      if (consultationCharges) updateData.consultationCharges = consultationCharges;
+    }
+
+
+
+    // Update user
     const updatedUser = await User.findByIdAndUpdate(
       id,
-      {
-        name,
-        email,
-        role,
-        department: role === 'Doctor' ? department._id : null,
-        specialization: role === 'Doctor' ? specialization : null,
-        consultationCharges: role === 'Doctor' ? consultationCharges : null,
-      },
-      { new: true }
-    ).populate('department', 'name'); // Populate the department field
+      { $set: updateData },
+      { 
+        new: true, // Return updated document
+        runValidators: true // Run model validations
+      }
+    ).populate('department', 'name');
 
-    if (!updatedUser) return res.status(404).json({ message: 'User not found' });
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Failed to update user' });
+    }
+
+ 
     res.status(200).json(updatedUser);
+
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Update error:', error);
+    res.status(500).json({ 
+      message: 'Error updating user',
+      error: error.message 
+    });
   }
 };
 

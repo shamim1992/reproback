@@ -12,8 +12,9 @@ import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js
 
 const router = express.Router();
 
+router.get('/search', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), searchPatients);
 // Create a new patient (Receptionist, Admin)
-router.post('/', authenticateJWT, authorizeRoles('Receptionist', 'Admin', 'superAdmin'), createPatient);
+router.post('/', authenticateJWT, authorizeRoles('Receptionist', 'Admin', 'superAdmin','Accountant'), createPatient);
 
 // Get all patients (Doctors, Receptionist, Admin)
 router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getAllPatients);
@@ -22,8 +23,7 @@ router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin
 router.get('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getPatientById);
 
 // Update a patient (Receptionist, Admin)
-router.put('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), updatePatient);
-
+router.put('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin', 'superAdmin', 'Accountant'), updatePatient);
 // Delete a patient (Admin)
 router.delete('/:patientId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), deletePatient);
 

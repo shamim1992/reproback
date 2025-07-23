@@ -14,8 +14,8 @@ const app = express();
 app.use(express.json());
 const corsOptions = {
   origin: [
-    'http://localhost:3000',  // Development
-    'https://billingfrontend-sigma.vercel.app' // Add your production domain when deployed
+    'http://localhost:3000', 
+    'https://billingfrontend-sigma.vercel.app'
   ],
   
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -28,6 +28,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 // Routes
 app.use('/api', routes);
+
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

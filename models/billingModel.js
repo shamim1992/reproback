@@ -12,6 +12,12 @@ const BillingItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const BillingSchema = new mongoose.Schema({
+  billNumber: { 
+    type: String, 
+    unique: true, 
+    index: true,
+    required: true
+  },
   patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   billingItems: [BillingItemSchema],
@@ -20,26 +26,28 @@ const BillingSchema = new mongoose.Schema({
     value: { type: Number, required: true }
   },
   payment: {
-    type: { type: String, enum: ['cash', 'card', 'upi'], required: true },
-    paid: { type: Number, required: true }
+    type: { type: String, enum: ['cash', 'card', 'upi', 'NEFT'], required: true },
+    paid: { type: Number, required: true },
+    cardNumber: { type: String }, 
+    utrNumber: { type: String }  
   },
-  remarks: { type: String, enum: ['paid', 'pending', 'partial'], required: true },
+  status: { 
+    type: String, 
+    enum: ['active', 'paid', 'cancelled', 'partial'], 
+    default: 'active',
+    required: true 
+  },
   totals: {
     subtotal: { type: Number, required: true },
     totalTax: { type: Number, required: true },
     grandTotal: { type: Number, required: true },
-    balance: { type: Number, required: true }
+    balance: { type: Number, required: true },
+    dueAmount: { type: Number, default: 0 }
   },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Add this line
-  date: { type: Date, default: Date.now },
-  receiptNumber: { type: String, unique: true , index: true},  
-  receiptHistory: [{  
-    receiptNumber: String,
-    date: { type: Date, default: Date.now },
-    billingDetails: Object
-  }]
-},{timestamps: true });
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  date: { type: Date, default: Date.now }
+}, { timestamps: true });
 
-const Billing = mongoose.model('Billing', BillingSchema);
+const Billing = mongoose.models.Billing || mongoose.model('Billing', BillingSchema);
 
 export default Billing;

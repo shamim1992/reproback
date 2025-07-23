@@ -27,7 +27,7 @@ router.get('/', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin
 // Get a single user by ID (Super Admin)
 router.get('/:id',authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), getUserById);
 // Update a user (Super Admin)
-router.put('/:userId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), updateUser);
+router.put('/:id', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), updateUser);
 
 // Delete a user (Super Admin)
 router.delete('/:userId', authenticateJWT, authorizeRoles('Doctor', 'Receptionist', 'Admin','superAdmin', 'Accountant'), deleteUser);
