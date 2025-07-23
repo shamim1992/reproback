@@ -360,71 +360,6 @@ export const addPayment = async (req, res) => {
   }
 };
 
-// Cancel bill
-
-
-// export const cancelBill = async (req, res) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-
-//   try {
-//     const { id } = req.params;
-//     const { reason } = req.body;
-//     const userId = req.user.id;
-
-//     const billing = await Billing.findById(id).session(session);
-//     if (!billing) {
-//       await session.abortTransaction();
-//       return res.status(404).json({ message: 'Billing record not found' });
-//     }
-
-//     if (billing.status === 'cancelled') {
-//       await session.abortTransaction();
-//       return res.status(400).json({ message: 'Bill is already cancelled' });
-//     }
-
-//     const previousStatus = billing.status;
-    
-//     // Update billing status
-//     const updatedBilling = await Billing.findByIdAndUpdate(
-//       id,
-//       { status: 'cancelled' },
-//       { new: true, session }
-//     );
-
-//     // FIXED: Create cancellation receipt with original payment amount and method
-//     await createReceipt({
-//       billNumber: billing.billNumber,
-//       billingId: billing._id,
-//       type: 'cancellation',
-//       amount: billing.payment.paid, // ✅ Include original payment amount
-//       paymentMethod: {
-//         type: billing.payment.type,
-//         cardNumber: billing.payment.cardNumber,
-//         utrNumber: billing.payment.utrNumber
-//       }, // ✅ Include original payment method
-//       previousStatus,
-//       newStatus: 'cancelled',
-//       remarks: reason || 'Bill cancelled - Refund processed',
-//       createdBy: userId
-//     }, session);
-
-//     await session.commitTransaction();
-
-//     res.status(200).json({ 
-//       message: 'Bill cancelled successfully', 
-//       billing: updatedBilling,
-//       refundAmount: billing.payment.paid, // ✅ Return refund amount
-//       success: true
-//     });
-//   } catch (error) {
-//     await session.abortTransaction();
-//     console.error('Error cancelling bill:', error);
-//     res.status(500).json({ message: 'Server error', error });
-//   } finally {
-//     session.endSession();
-//   }
-// };
 
 
 export const cancelBill = async (req, res) => {
@@ -562,11 +497,6 @@ export const getBillingByBillNumber = async (req, res) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
-
-
-
-
-
 
 export const getDueAmountReport = async (req, res) => {
   try {
