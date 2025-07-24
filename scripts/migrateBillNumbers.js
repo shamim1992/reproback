@@ -3,8 +3,15 @@ import dotenv from 'dotenv';
 import Billing from '../models/billingModel.js';
 import Receipt from '../models/receiptModel.js';
 import Counter from '../models/counterModel.js';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
+
+// Generate receipt number
+const generateReceiptNumber = () => {
+  const uniqueId = uuidv4().slice(-8).toUpperCase();
+  return `REC${uniqueId}`;
+};
 
 // Enhanced bill number generation without transaction dependency
 const generateBillNumber = async () => {
@@ -48,12 +55,88 @@ const generateBillNumber = async () => {
   }
 };
 
+// Create receipt for migrated bill
+const createReceiptForBill = async (bill, billNumber, session) => {
+  try {
+    // Check if a creation receipt already exists for this bill
+    const existingReceipt = await Receipt.findOne({
+      billingId: bill._id,
+      type: 'creation'
+    }).session(session);
+
+    if (existingReceipt) {
+      console.log(`   📄 Creation receipt already exists for bill ${bill._id}`);
+      
+      // Update the existing receipt's bill number if it's different
+      if (existingReceipt.billNumber !== billNumber) {
+        await Receipt.findByIdAndUpdate(
+          existingReceipt._id,
+          { billNumber },
+          { session }
+        );
+        console.log(`   📝 Updated existing receipt ${existingReceipt.receiptNumber} with new bill number`);
+      }
+      return existingReceipt;
+    }
+
+    // Generate unique receipt number
+    let receiptNumber;
+    let receiptAttempts = 0;
+    const maxReceiptAttempts = 5;
+
+    do {
+      receiptNumber = generateReceiptNumber();
+      receiptAttempts++;
+
+      const existingReceiptWithNumber = await Receipt.findOne({
+        receiptNumber
+      }).session(session);
+
+      if (!existingReceiptWithNumber) {
+        break; // Unique receipt number found
+      }
+
+      if (receiptAttempts >= maxReceiptAttempts) {
+        throw new Error(`Failed to generate unique receipt number after ${maxReceiptAttempts} attempts`);
+      }
+    } while (receiptAttempts < maxReceiptAttempts);
+
+    // Create new receipt
+    const receipt = new Receipt({
+      receiptNumber,
+      billNumber,
+      billingId: bill._id,
+      type: 'creation',
+      amount: bill.payment?.paid || 0,
+      paymentMethod: {
+        type: bill.payment?.type || 'cash',
+        cardNumber: bill.payment?.cardNumber,
+        utrNumber: bill.payment?.utrNumber
+      },
+      newStatus: bill.status,
+      remarks: 'Bill created - Generated during migration',
+      createdBy: bill.createdBy,
+      date: bill.date || bill.createdAt || new Date()
+    });
+
+    await receipt.save({ session });
+    console.log(`   📄 Created receipt ${receiptNumber} for bill ${billNumber}`);
+    
+    return receipt;
+  } catch (error) {
+    console.error(`   ❌ Failed to create receipt for bill ${bill._id}:`, error.message);
+    throw error;
+  }
+};
+
 // Process bills in smaller batches with individual transactions
 const migrateBillNumbersBatch = async (bills, batchNumber, totalBatches) => {
   console.log(`\n📦 Processing batch ${batchNumber}/${totalBatches} (${bills.length} bills)`);
   
   let batchMigrated = 0;
   let batchFailed = 0;
+  let receiptsCreated = 0;
+  let receiptsUpdated = 0;
   const batchFailedBills = [];
 
   for (let i = 0; i < bills.length; i++) {
@@ -94,16 +177,28 @@ const migrateBillNumbersBatch = async (bills, batchNumber, totalBatches) => {
         { session }
       );
 
-      // Update related receipts with the new bill number
+      // Create or update receipt for this bill
+      const receipt = await createReceiptForBill(bill, billNumber, session);
+      
+      if (receipt.isNew !== false) {
+        receiptsCreated++;
+      } else {
+        receiptsUpdated++;
+      }
+
+      // Update other related receipts with the new bill number
       const receiptUpdateResult = await Receipt.updateMany(
-        { billingId: bill._id },
+        { 
+          billingId: bill._id,
+          _id: { $ne: receipt._id } // Exclude the creation receipt we just handled
+        },
         { $set: { billNumber } },
         { session }
       );
 
       await session.commitTransaction();
       
-      console.log(`✔ [${i + 1}/${bills.length}] Updated bill ${bill._id} → ${billNumber} (${receiptUpdateResult.modifiedCount} receipts)`);
+      console.log(`✔ [${i + 1}/${bills.length}] Updated bill ${bill._id} → ${billNumber} (${receiptUpdateResult.modifiedCount + 1} receipts updated)`);
       batchMigrated++;
 
     } catch (error) {
@@ -119,11 +214,17 @@ const migrateBillNumbersBatch = async (bills, batchNumber, totalBatches) => {
     }
   }
 
-  return { batchMigrated, batchFailed, batchFailedBills };
+  return { 
+    batchMigrated, 
+    batchFailed, 
+    batchFailedBills, 
+    receiptsCreated, 
+    receiptsUpdated 
+  };
 };
 
 const migrateBillNumbers = async () => {
-  console.log('🚀 Starting bill number migration...');
+  console.log('🚀 Starting bill number migration with receipt creation...');
   
   try {
     // Connect to MongoDB
@@ -160,6 +261,8 @@ const migrateBillNumbers = async () => {
 
     let totalMigrated = 0;
     let totalFailed = 0;
+    let totalReceiptsCreated = 0;
+    let totalReceiptsUpdated = 0;
     const allFailedBills = [];
 
     // Process each batch
@@ -169,6 +272,8 @@ const migrateBillNumbers = async () => {
       
       totalMigrated += result.batchMigrated;
       totalFailed += result.batchFailed;
+      totalReceiptsCreated += result.receiptsCreated;
+      totalReceiptsUpdated += result.receiptsUpdated;
       allFailedBills.push(...result.batchFailedBills);
 
       // Small delay between batches to avoid overwhelming the database
@@ -179,6 +284,8 @@ const migrateBillNumbers = async () => {
 
     console.log(`\n🎉 Migration completed!`);
     console.log(`✅ Successfully migrated: ${totalMigrated} bills`);
+    console.log(`📄 Receipts created: ${totalReceiptsCreated}`);
+    console.log(`📝 Receipts updated: ${totalReceiptsUpdated}`);
     
     if (totalFailed > 0) {
       console.log(`❌ Failed to migrate: ${totalFailed} bills`);
@@ -194,6 +301,9 @@ const migrateBillNumbers = async () => {
       console.log(`📄 Failed bills details saved to: ${failedBillsFile}`);
     }
 
+    // Final verification
+    await verifyMigration();
+
   } catch (error) {
     console.error('❌ Migration failed with error:', error);
     process.exit(1);
@@ -201,6 +311,68 @@ const migrateBillNumbers = async () => {
     // Disconnect from MongoDB
     await mongoose.disconnect();
     console.log('🔌 Disconnected from MongoDB');
+  }
+};
+
+// Verify migration results
+const verifyMigration = async () => {
+  try {
+    console.log('\n🔍 Verifying migration results...');
+    
+    // Check bills without bill numbers
+    const billsWithoutNumber = await Billing.countDocuments({
+      $or: [
+        { billNumber: { $exists: false } },
+        { billNumber: null },
+        { billNumber: '' }
+      ]
+    });
+
+    // Check bills without creation receipts
+    const billsWithoutReceipts = await Billing.aggregate([
+      {
+        $lookup: {
+          from: 'receipts',
+          let: { billId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$billingId', '$$billId'] },
+                    { $eq: ['$type', 'creation'] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'creationReceipts'
+        }
+      },
+      {
+        $match: {
+          creationReceipts: { $size: 0 }
+        }
+      },
+      {
+        $count: 'billsWithoutCreationReceipts'
+      }
+    ]);
+
+    const billsWithoutCreationReceipts = billsWithoutReceipts[0]?.billsWithoutCreationReceipts || 0;
+
+    console.log(`📊 Verification Results:`);
+    console.log(`   - Bills without bill numbers: ${billsWithoutNumber}`);
+    console.log(`   - Bills without creation receipts: ${billsWithoutCreationReceipts}`);
+    
+    if (billsWithoutNumber === 0 && billsWithoutCreationReceipts === 0) {
+      console.log('✅ Migration verification passed!');
+    } else {
+      console.log('⚠️ Migration verification found issues - may need manual review');
+    }
+    
+  } catch (error) {
+    console.error('❌ Verification failed:', error);
   }
 };
 
@@ -253,7 +425,7 @@ const validateMigration = async () => {
     }
     
     if (!collectionNames.includes('receipts')) {
-      console.warn('⚠️ Receipts collection not found - receipts will not be updated');
+      console.warn('⚠️ Receipts collection not found - will be created automatically');
     }
     
     if (!collectionNames.includes('counters')) {
@@ -268,6 +440,84 @@ const validateMigration = async () => {
   }
 };
 
+// Add a function to create receipts for existing bills (without bill number changes)
+const createMissingReceipts = async () => {
+  console.log('🔍 Checking for bills without creation receipts...');
+  
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    
+    // Find bills that don't have creation receipts
+    const billsWithoutReceipts = await Billing.aggregate([
+      {
+        $lookup: {
+          from: 'receipts',
+          let: { billId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$billingId', '$$billId'] },
+                    { $eq: ['$type', 'creation'] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'creationReceipts'
+        }
+      },
+      {
+        $match: {
+          creationReceipts: { $size: 0 },
+          billNumber: { $exists: true, $ne: null, $ne: '' }
+        }
+      }
+    ]);
+
+    console.log(`📊 Found ${billsWithoutReceipts.length} bills without creation receipts`);
+
+    if (billsWithoutReceipts.length === 0) {
+      console.log('✅ All bills have creation receipts');
+      return;
+    }
+
+    let receiptsCreated = 0;
+    let receiptsFailed = 0;
+
+    for (const bill of billsWithoutReceipts) {
+      const session = await mongoose.startSession();
+      
+      try {
+        session.startTransaction();
+        
+        await createReceiptForBill(bill, bill.billNumber, session);
+        await session.commitTransaction();
+        
+        receiptsCreated++;
+        console.log(`✔ Created receipt for bill ${bill.billNumber}`);
+        
+      } catch (error) {
+        await session.abortTransaction();
+        receiptsFailed++;
+        console.error(`❌ Failed to create receipt for bill ${bill._id}:`, error.message);
+      } finally {
+        await session.endSession();
+      }
+    }
+
+    console.log(`\n📄 Receipt creation completed:`);
+    console.log(`✅ Created: ${receiptsCreated} receipts`);
+    console.log(`❌ Failed: ${receiptsFailed} receipts`);
+
+  } catch (error) {
+    console.error('❌ Create missing receipts failed:', error);
+  } finally {
+    await mongoose.disconnect();
+  }
+};
+
 // Main execution
 const main = async () => {
   console.log('🔍 Validating migration prerequisites...');
@@ -278,7 +528,15 @@ const main = async () => {
   }
   
   console.log('✅ Validation passed');
-  await migrateBillNumbers();
+  
+  // Check command line arguments
+  const args = process.argv.slice(2);
+  
+  if (args.includes('--receipts-only')) {
+    await createMissingReceipts();
+  } else {
+    await migrateBillNumbers();
+  }
 };
 
 // Run the migration
