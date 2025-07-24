@@ -10,42 +10,70 @@ const generateReceiptNumber = () => {
   return `REC${uniqueId}`;
 };
 
-// Generate auto-incrementing bill number with fallback approaches
-const generateBillNumber = async (session = null) => {
+// Fixed bill number generation function
+export const generateBillNumber = async (session = null) => {
+  const baseNumber = 100000000; // Base number for all approaches
+  
   try {
-    // Approach 1: Try using Counter collection directly (bypasses Mongoose model issues)
+    // Method 1: Direct MongoDB collection operation
     const db = mongoose.connection.db;
     const result = await db.collection('counters').findOneAndUpdate(
-      { _id: 'billNumber' },
-      { $inc: { sequence_value: 1 } },
-      { 
-        upsert: true, 
+      { id: 'billNumber' },
+      { $inc: { sequenceValue: 1 } },
+      {
+        upsert: true,
         returnDocument: 'after',
         ...(session && { session })
       }
     );
-    
+
     if (result && result.value) {
-      return result.value.sequence_value.toString().padStart(9, '0');
+      const finalNumber = baseNumber + result.value.sequenceValue;
+      return finalNumber.toString().padStart(9, '0');
     }
-    
-    throw new Error('Counter update failed');
   } catch (error) {
-    console.warn('Counter approach failed, using fallback:', error.message);
-    
-    // Approach 2: Count-based fallback
-    try {
-      const count = await Billing.countDocuments();
-      const nextNumber = count + 100000001;
-      return nextNumber.toString().padStart(9, '0');
-    } catch (countError) {
-      console.warn('Count-based approach failed, using timestamp:', countError.message);
-      
-      // Approach 3: Timestamp-based fallback
-      const timestamp = Date.now().toString().slice(-6);
-      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      return `${timestamp}${random}`;
+    console.warn('Direct counter approach failed:', error.message);
+  }
+
+  try {
+    // Method 2: Counter model approach
+    const counter = await Counter.findOneAndUpdate(
+      { id: 'billNumber' },
+      { $inc: { sequenceValue: 1 } },
+      { 
+        new: true, 
+        upsert: true,
+        ...(session && { session })
+      }
+    );
+
+    if (counter) {
+      const finalNumber = baseNumber + counter.sequenceValue;
+      return finalNumber.toString().padStart(9, '0');
     }
+  } catch (error) {
+    console.warn('Counter model approach failed:', error.message);
+  }
+
+  // Method 3: Fallback - find highest existing bill number
+  try {
+    const highestBill = await Billing.findOne({ 
+      billNumber: { $exists: true, $ne: null, $ne: '' }
+    })
+    .sort({ billNumber: -1 })
+    .session(session);
+
+    let nextNumber = baseNumber + 1; // 100000001
+    
+    if (highestBill && highestBill.billNumber) {
+      const currentNumber = parseInt(highestBill.billNumber);
+      nextNumber = currentNumber + 1;
+    }
+
+    return nextNumber.toString().padStart(9, '0');
+  } catch (error) {
+    console.error('All bill number generation methods failed:', error);
+    throw new Error('Unable to generate bill number');
   }
 };
 
@@ -58,6 +86,207 @@ const createReceipt = async (receiptData, session) => {
   });
   await receipt.save({ session });
   return receipt;
+};
+
+// Fixed createBilling function with better error handling
+export const createBilling = async (req, res) => {
+  console.log('🆕 Creating new billing record...');
+  
+  const session = await mongoose.startSession();
+  
+  try {
+    session.startTransaction();
+    console.log('✅ Transaction started');
+
+    const { patientId, doctorId, billingItems, discount, payment, totals } = req.body;
+    const userId = req.user.id;
+
+    // Validate required fields
+    if (!patientId || !doctorId || !billingItems || billingItems.length === 0 || !payment) {
+      console.error('❌ Missing required fields:', { patientId, doctorId, billingItems: billingItems?.length, payment });
+      await session.abortTransaction();
+      return res.status(400).json({ 
+        message: 'Missing required fields',
+        missingFields: {
+          patientId: !patientId,
+          doctorId: !doctorId,
+          billingItems: !billingItems || billingItems.length === 0,
+          payment: !payment
+        }
+      });
+    }
+
+    console.log('✅ Required fields validated');
+
+    // Generate bill number with retry logic
+    let billNumber;
+    let attempts = 0;
+    const maxAttempts = 5; // Increased from 3
+    
+    do {
+      try {
+        console.log(`🔢 Generating bill number (attempt ${attempts + 1}/${maxAttempts})`);
+        billNumber = await generateBillNumber(session);
+        console.log(`✅ Generated bill number: ${billNumber}`);
+        attempts++;
+        
+        // Check if bill number already exists
+        const existingBill = await Billing.findOne({ billNumber }).session(session);
+        if (!existingBill) {
+          console.log('✅ Bill number is unique');
+          break; // Unique bill number found
+        }
+        
+        console.warn(`⚠️ Bill number ${billNumber} already exists, retrying...`);
+        
+        if (attempts >= maxAttempts) {
+          throw new Error('Unable to generate unique bill number after maximum attempts');
+        }
+      } catch (error) {
+        console.error(`❌ Error generating bill number on attempt ${attempts + 1}:`, error.message);
+        if (attempts >= maxAttempts - 1) {
+          throw error;
+        }
+      }
+    } while (attempts < maxAttempts);
+
+    console.log(`✅ Final bill number: ${billNumber}`);
+
+    // Calculate due amount and status
+    const dueAmount = totals.grandTotal - payment.paid;
+    const status = dueAmount <= 0 ? 'paid' : dueAmount < totals.grandTotal ? 'partial' : 'active';
+
+    console.log('💰 Calculated billing details:', {
+      grandTotal: totals.grandTotal,
+      paid: payment.paid,
+      dueAmount,
+      status
+    });
+
+    // Create new billing record
+    const newBilling = new Billing({
+      billNumber,
+      patientId,
+      doctorId,
+      billingItems,
+      discount,
+      payment,
+      status,
+      totals: {
+        ...totals,
+        balance: dueAmount,
+        dueAmount: Math.max(0, dueAmount)
+      },
+      createdBy: userId
+    });
+
+    console.log('💾 Saving billing record...');
+    await newBilling.save({ session });
+    console.log('✅ Billing record saved');
+
+    // Create creation receipt
+    console.log('🧾 Creating receipt...');
+    await createReceipt({
+      billNumber,
+      billingId: newBilling._id,
+      type: 'creation',
+      amount: payment.paid,
+      paymentMethod: {
+        type: payment.type,
+        cardNumber: payment.cardNumber,
+        utrNumber: payment.utrNumber
+      },
+      newStatus: status,
+      remarks: 'Bill created',
+      createdBy: userId
+    }, session);
+    console.log('✅ Receipt created');
+
+    await session.commitTransaction();
+    console.log('🎉 Transaction committed successfully');
+    
+    res.status(201).json({ 
+      message: 'Billing record created successfully', 
+      billing: newBilling,
+      success: true
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    console.error('❌ Error creating billing record:', error);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({ 
+      message: 'Server error creating billing record', 
+      error: error.message || 'Unknown error occurred',
+      success: false
+    });
+  } finally {
+    session.endSession();
+    console.log('🔌 Session ended');
+  }
+};
+
+// Initialize counter if it doesn't exist (helper function)
+export const initializeBillCounter = async () => {
+  try {
+    console.log('🔧 Checking bill counter...');
+    
+    const existingCounter = await Counter.findOne({ id: 'billNumber' });
+    
+    if (!existingCounter) {
+      console.log('🆕 Creating new bill counter...');
+      
+      // Find highest existing bill number
+      const highestBill = await Billing.findOne({ 
+        billNumber: { $exists: true, $ne: null, $ne: '' }
+      }).sort({ billNumber: -1 });
+
+      let startingValue = 0;
+      if (highestBill && highestBill.billNumber) {
+        const currentNumber = parseInt(highestBill.billNumber);
+        startingValue = currentNumber - 100000000;
+        console.log(`📈 Found highest bill: ${highestBill.billNumber}, starting counter at: ${startingValue}`);
+      }
+
+      await Counter.create({
+        id: 'billNumber',
+        sequenceValue: startingValue
+      });
+      
+      console.log('✅ Bill counter created successfully');
+    } else {
+      console.log(`✅ Bill counter exists with value: ${existingCounter.sequenceValue}`);
+    }
+  } catch (error) {
+    console.error('❌ Error initializing bill counter:', error);
+    throw error;
+  }
+};
+
+// Test bill number generation (for debugging)
+export const testBillNumberGeneration = async (req, res) => {
+  try {
+    console.log('🧪 Testing bill number generation...');
+    
+    // Initialize counter first
+    await initializeBillCounter();
+    
+    // Generate a test bill number
+    const billNumber = await generateBillNumber();
+    
+    res.status(200).json({
+      message: 'Bill number generation test successful',
+      billNumber,
+      success: true
+    });
+  } catch (error) {
+    console.error('❌ Bill number generation test failed:', error);
+    res.status(500).json({
+      message: 'Bill number generation test failed',
+      error: error.message,
+      success: false
+    });
+  }
 };
 
 // Migration function to add billNumber to existing bills
@@ -129,100 +358,7 @@ export const migrateBillNumbers = async (req, res) => {
   }
 };
 
-// Create new billing record
-export const createBilling = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const { patientId, doctorId, billingItems, discount, payment, totals } = req.body;
-    const userId = req.user.id;
-
-    if (!patientId || !doctorId || !billingItems || billingItems.length === 0 || !payment) {
-      await session.abortTransaction();
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
-
-    // Generate bill number with multiple fallback approaches
-    let billNumber;
-    let attempts = 0;
-    const maxAttempts = 3;
-    
-    do {
-      billNumber = await generateBillNumber(session);
-      attempts++;
-      
-      // Check if bill number already exists
-      const existingBill = await Billing.findOne({ billNumber }).session(session);
-      if (!existingBill) {
-        break; // Unique bill number found
-      }
-      
-      if (attempts >= maxAttempts) {
-        await session.abortTransaction();
-        return res.status(409).json({ 
-          message: 'Unable to generate unique bill number. Please try again.' 
-        });
-      }
-    } while (attempts < maxAttempts);
-
-    // Calculate due amount and status
-    const dueAmount = totals.grandTotal - payment.paid;
-    const status = dueAmount <= 0 ? 'paid' : dueAmount < totals.grandTotal ? 'partial' : 'active';
-
-    const newBilling = new Billing({
-      billNumber,
-      patientId,
-      doctorId,
-      billingItems,
-      discount,
-      payment,
-      status,
-      totals: {
-        ...totals,
-        balance: dueAmount,
-        dueAmount: Math.max(0, dueAmount)
-      },
-      createdBy: userId
-    });
-
-    await newBilling.save({ session });
-
-    // Create creation receipt
-    await createReceipt({
-      billNumber,
-      billingId: newBilling._id,
-      type: 'creation',
-      amount: payment.paid,
-      paymentMethod: {
-        type: payment.type,
-        cardNumber: payment.cardNumber,
-        utrNumber: payment.utrNumber
-      },
-      newStatus: status,
-      remarks: 'Bill created',
-      createdBy: userId
-    }, session);
-
-    await session.commitTransaction();
-    
-    res.status(201).json({ 
-      message: 'Billing record created successfully', 
-      billing: newBilling,
-      success: true
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    console.error('Error creating billing record:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message || 'Unknown error occurred'
-    });
-  } finally {
-    session.endSession();
-  }
-};
-
+// ... (rest of your existing functions remain the same)
 // Update billing record
 export const updateBillingById = async (req, res) => {
   const session = await mongoose.startSession();
@@ -360,8 +496,6 @@ export const addPayment = async (req, res) => {
   }
 };
 
-
-
 export const cancelBill = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -382,7 +516,7 @@ export const cancelBill = async (req, res) => {
       return res.status(400).json({ message: 'Bill is already cancelled' });
     }
 
-    // ✅ NEW: Check if bill can be cancelled (same day only)
+    // Check if bill can be cancelled (same day only)
     const billDate = new Date(billing.date);
     const today = new Date();
     
@@ -414,12 +548,12 @@ export const cancelBill = async (req, res) => {
       billNumber: billing.billNumber,
       billingId: billing._id,
       type: 'cancellation',
-      amount: billing.payment.paid, // ✅ Include original payment amount
+      amount: billing.payment.paid,
       paymentMethod: {
         type: billing.payment.type,
         cardNumber: billing.payment.cardNumber,
         utrNumber: billing.payment.utrNumber
-      }, // ✅ Include original payment method
+      },
       previousStatus,
       newStatus: 'cancelled',
       remarks: reason || 'Bill cancelled - Refund processed',
@@ -431,7 +565,7 @@ export const cancelBill = async (req, res) => {
     res.status(200).json({ 
       message: 'Bill cancelled successfully', 
       billing: updatedBilling,
-      refundAmount: billing.payment.paid, // ✅ Return refund amount
+      refundAmount: billing.payment.paid,
       success: true
     });
   } catch (error) {
