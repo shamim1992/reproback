@@ -37,31 +37,24 @@ const userSchema = new mongoose.Schema({
     },
     required: true,
   },
-  department: {
+  center: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department',
-    required: function () {
-      return this.role === 'Doctor';
-    },
+    ref: 'Center', // Changed from 'center' to 'Center' to match the model registration
   },
-  specialization: {
-    type: String,
-    required: function () {
-      return this.role === 'Doctor';
-    },
-    trim: true,
-  },
-  consultationCharges: {
-    type: Number,
-    required: function () {
-      return this.role === 'Doctor';
-    },
-    min: [0, 'Consultation charges cannot be negative'],
-  },
+  
   isActive: {
     type: Boolean,
     default: true,
-  }
+  },
+  // Password reset fields
+  resetPasswordToken: {
+    type: String,
+    default: null,
+  },
+  resetPasswordExpires: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
 });

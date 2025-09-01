@@ -1,301 +1,431 @@
-import Patient from '../models/patientModel.js';
-import Counter from '../models/counterModel.js';
+import User from "../models/userModel.js";
+import Center from "../models/centerModel.js";
+import Patient from "../models/patientModel.js";
 
-const getNextPatientId = async () => {
-  const initialId = 3333000000000001;
-  const counter = await Counter.findOneAndUpdate(
-    { id: 'patientId' },
-    { $inc: { sequenceValue: 1 } },
-    { new: true, upsert: true }
-  );
-
-  const nextId = initialId + counter.sequenceValue;
-  return nextId;
-};
 
 export const createPatient = async (req, res) => {
-  console.log(req.body);
   try {
-    const existingPatient = await Patient.findOne({
-      phoneNumber: req.body.phoneNumber,
-    });
+    const { 
+      name, 
+      dateOfBirth, 
+      gender, 
+      occupation, 
+      spouseName, 
+      spouseOccupation, 
+      spouseDateOfBirth, 
+      address, 
+      contactNumber, 
+      email,
+      doctorId // This will be provided by receptionist, ignored if user is doctor
+    } = req.body;
 
-    if (existingPatient) {
-      return res.status(409).json({ message: 'User with this email and mobile number already exists' });
+    // Get the current user who is creating the patient
+    const currentUser = await User.findById(req.user.id).populate('center');
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    let patientId;
-
-    // Check if Patient ID is manually provided
-    if (req.body.patientId && req.body.patientId.trim() !== '') {
-      // Validate that the provided Patient ID doesn't already exist
-      const existingPatientWithId = await Patient.findOne({ 
-        patientId: req.body.patientId.trim() 
+    // Always use the current user's assigned center
+    if (!currentUser.center) {
+      return res.status(400).json({ 
+        message: 'Your account is not assigned to any center. Please contact your administrator.' 
       });
-      
-      if (existingPatientWithId) {
-        return res.status(409).json({ 
-          message: 'Patient ID already exists. Please choose a different Patient ID.',
-          field: 'patientId'
+    }
+    
+    const center = currentUser.center;
+
+    // Check if patient with same email already exists
+    const existingPatient = await Patient.findOne({ email: email.toLowerCase() });
+    if (existingPatient) {
+      return res.status(400).json({ message: 'Patient with this email already exists' });
+    }
+
+    // Doctor assignment logic based on user role
+    let assignedDoctorId = null;
+
+    if (currentUser.role === 'Doctor') {
+      // If doctor is creating patient, auto-assign themselves
+      assignedDoctorId = currentUser._id;
+    } else if (currentUser.role === 'Receptionist' || currentUser.role === 'Admin') {
+      // If receptionist/admin is creating patient, use provided doctorId
+      if (doctorId) {
+        // Validate that the doctor exists and belongs to the same center
+        const doctor = await User.findOne({ 
+          _id: doctorId, 
+          role: 'Doctor', 
+          center: center._id,
+          isActive: true 
+        });
+        
+        if (!doctor) {
+          return res.status(400).json({ 
+            message: 'Invalid doctor selected or doctor not available in your center' 
+          });
+        }
+        
+        assignedDoctorId = doctorId;
+      }
+      // Note: doctorId is optional for receptionist/admin - they can create without assigning
+    } else {
+      // Other roles (if any) cannot assign doctors
+      if (doctorId) {
+        return res.status(403).json({ 
+          message: 'You do not have permission to assign doctors to patients' 
         });
       }
-      
-      // Use the provided Patient ID
-      patientId = req.body.patientId.trim();
-    } else {
-      // Auto-generate Patient ID using existing logic
-      if (req.body.registeredPatient === true) {
-        const counter = await Counter.findOneAndUpdate(
-          { id: 'registeredPatientId' },
-          { $inc: { sequenceValue: 1 } },
-          { new: true, upsert: true }
-        );
-        // Generate the patientId with prefix and padded number
-        patientId = `UNHSR${String(counter.sequenceValue).padStart(6, '0')}`;
-      } else {
-        patientId = await getNextPatientId();
-      }
     }
 
-    const newPatient = new Patient({
-      ...req.body,
-      patientId,
+    // Create the patient
+    const patient = new Patient({
+      name: name.trim(),
+      dateOfBirth,
+      gender,
+      occupation: occupation.trim(),
+      spouseName: spouseName.trim(),
+      spouseOccupation: spouseOccupation.trim(),
+      spouseDateOfBirth,
+      address: address.trim(),
+      contactNumber: contactNumber.trim(),
+      email: email.toLowerCase().trim(),
+      doctorId: assignedDoctorId, // Will be null if no doctor assigned
+      center: center._id,
+      createdBy: currentUser._id
     });
 
-    const savedPatient = await newPatient.save();
+    const savedPatient = await patient.save();
+    
+    // Populate the saved patient before returning
+    await savedPatient.populate('center', 'name address contactNumber centerCode');
+    await savedPatient.populate('createdBy', 'name email');
+    await savedPatient.populate('doctorId', 'name email'); // Populate doctor info
+    
     res.status(201).json(savedPatient);
   } catch (error) {
     console.error('Error creating patient:', error);
     
-    // Handle duplicate key error for patientId
-    if (error.code === 11000 && error.keyPattern?.patientId) {
-      return res.status(409).json({ 
-        message: 'Patient ID already exists. Please choose a different Patient ID.',
-        field: 'patientId'
-      });
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: errors.join(', ') });
     }
     
-    res.status(500).json({ message: 'Failed to create patient', error: error.message });
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      return res.status(400).json({ message: `Patient with this ${field} already exists` });
+    }
+    
+    res.status(500).json({ message: 'Failed to create patient' });
   }
 };
 
-
-// Get all patients
-export const getAllPatients = async (req, res) => {
+// Helper function to get available doctors for a center
+export const getDoctorsByCenter = async (req, res) => {
   try {
-    const patients = await Patient.find();
-    return res.status(200).json(patients);
+    const currentUser = await User.findById(req.user.id).populate('center');
+    
+    if (!currentUser || !currentUser.center) {
+      return res.status(400).json({ 
+        message: 'User must be assigned to a center' 
+      });
+    }
+
+    // Only allow Receptionist and Admin to fetch doctors list
+    if (!['Receptionist', 'Admin', 'superAdmin'].includes(currentUser.role)) {
+      return res.status(403).json({ 
+        message: 'You do not have permission to view doctors list' 
+      });
+    }
+
+    const doctors = await User.find({
+      role: 'Doctor',
+      center: currentUser.center._id,
+      isActive: true
+    }).select('name email contactNumber').sort({ name: 1 });
+
+    res.status(200).json(doctors);
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Error fetching doctors:', error);
+    res.status(500).json({ message: 'Failed to fetch doctors' });
   }
 };
 
-// Get patient by ID
-export const getPatientById = async (req, res) => {
-  const { patientId } = req.params;
-
+// Update the existing functions to maintain doctor assignment logic
+export const updatePatient = async (req, res) => {
   try {
-    const patient = await Patient.findById(patientId);
-    if (!patient) {
+    const { id } = req.params;
+    const { 
+      name, 
+      dateOfBirth, 
+      gender, 
+      occupation, 
+      spouseName, 
+      spouseOccupation, 
+      spouseDateOfBirth, 
+      address, 
+      contactNumber, 
+      email, 
+      doctorId,
+      centerCode 
+    } = req.body;
+
+    // Check if patient exists
+    const existingPatient = await Patient.findById(id);
+    if (!existingPatient) {
       return res.status(404).json({ message: 'Patient not found' });
     }
 
-    return res.status(200).json({ patient });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
-  }
-};
-
-// Update patient
-// In patientController.js
-
-// export const updatePatient = async (req, res) => {
-//   const { patientId } = req.params;
-  
-//   try {
+    // Get current user
+    const currentUser = await User.findById(req.user.id).populate('center');
     
-
-//     // Check if patient exists
-//     const patient = await Patient.findById(patientId);
-//     if (!patient) {
-
-//       return res.status(404).json({ 
-//         message: 'Patient not found',
-//         requestedId: patientId 
-//       });
-//     }
-
-//     // Fields that shouldn't be updated
-//     const protectedFields = ['patientId', 'registrationDate', 'registeredPatient'];
-//     const updateData = { ...req.body };
-    
-//     // Remove protected fields from update data
-//     protectedFields.forEach(field => {
-//       delete updateData[field];
-//     });
-
-
-
-//     // Update patient with the modified data
-//     const updatedPatient = await Patient.findByIdAndUpdate(
-//       patientId,
-//       { $set: updateData },
-//       { new: true, runValidators: true }
-//     );
-
-  
-//     if (!updatedPatient) {
-//       return res.status(404).json({ message: 'Failed to update patient' });
-//     }
-
-//     return res.status(200).json({ 
-//       message: 'Patient updated successfully', 
-//       patient: updatedPatient 
-//     });
-    
-//   } catch (error) {
-//     console.error('Error updating patient:', error);
-//     return res.status(500).json({ 
-//       message: 'Failed to update patient', 
-//       error: error.message,
-//       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-//     });
-//   }
-// };
-
-export const updatePatient = async (req, res) => {
-  const { patientId } = req.params;
-  
-  try {
-    // Check if patient exists
-    const patient = await Patient.findById(patientId);
-    if (!patient) {
-      return res.status(404).json({ 
-        message: 'Patient not found',
-        requestedId: patientId 
-      });
+    // Find center by centerCode if provided
+    let center = existingPatient.center;
+    if (centerCode) {
+      const foundCenter = await Center.findOne({ centerCode });
+      if (!foundCenter) {
+        return res.status(404).json({ message: 'Center not found' });
+      }
+      center = foundCenter._id;
     }
 
-    // If patientId is being updated, check for uniqueness
-    if (req.body.patientId && req.body.patientId !== patient.patientId) {
-      const existingPatientWithId = await Patient.findOne({ 
-        patientId: req.body.patientId,
-        _id: { $ne: patientId } // Exclude current patient
+    // Check for email duplicates (excluding current patient)
+    if (email && email.toLowerCase() !== existingPatient.email) {
+      const duplicatePatient = await Patient.findOne({ 
+        email: email.toLowerCase(),
+        _id: { $ne: id }
       });
-      
-      if (existingPatientWithId) {
-        return res.status(409).json({ 
-          message: 'Patient ID already exists. Please choose a different Patient ID.',
-          field: 'patientId'
-        });
+      if (duplicatePatient) {
+        return res.status(400).json({ message: 'Patient with this email already exists' });
       }
     }
 
-    // Fields that shouldn't be updated (removed patientId from protected fields)
-    const protectedFields = ['registrationDate', 'registeredPatient'];
-    const updateData = { ...req.body };
-    
-    // Remove protected fields from update data
-    protectedFields.forEach(field => {
-      delete updateData[field];
-    });
+    // Doctor assignment logic for updates
+    let assignedDoctorId = existingPatient.doctorId;
 
-    // Update patient with the modified data
-    const updatedPatient = await Patient.findByIdAndUpdate(
-      patientId,
-      { $set: updateData },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedPatient) {
-      return res.status(404).json({ message: 'Failed to update patient' });
+    if (currentUser.role === 'Doctor') {
+      // Doctors can only assign themselves or remove assignment
+      if (doctorId !== undefined) {
+        if (doctorId === null || doctorId === currentUser._id.toString()) {
+          assignedDoctorId = doctorId;
+        } else {
+          return res.status(403).json({ 
+            message: 'Doctors can only assign themselves or remove doctor assignment' 
+          });
+        }
+      }
+    } else if (['Receptionist', 'Admin', 'superAdmin'].includes(currentUser.role)) {
+      // Receptionist/Admin can assign any doctor from their center
+      if (doctorId !== undefined) {
+        if (doctorId === null) {
+          assignedDoctorId = null;
+        } else {
+          // Validate doctor
+          const doctor = await User.findOne({ 
+            _id: doctorId, 
+            role: 'Doctor', 
+            center: currentUser.center._id,
+            isActive: true 
+          });
+          
+          if (!doctor) {
+            return res.status(400).json({ 
+              message: 'Invalid doctor selected or doctor not available in your center' 
+            });
+          }
+          
+          assignedDoctorId = doctorId;
+        }
+      }
     }
 
-    return res.status(200).json({ 
-      message: 'Patient updated successfully', 
-      patient: updatedPatient 
-    });
-    
+    const updateData = {
+      name: name?.trim() || existingPatient.name,
+      dateOfBirth: dateOfBirth || existingPatient.dateOfBirth,
+      gender: gender || existingPatient.gender,
+      occupation: occupation?.trim() || existingPatient.occupation,
+      spouseName: spouseName?.trim() || existingPatient.spouseName,
+      spouseOccupation: spouseOccupation?.trim() || existingPatient.spouseOccupation,
+      spouseDateOfBirth: spouseDateOfBirth || existingPatient.spouseDateOfBirth,
+      address: address?.trim() || existingPatient.address,
+      contactNumber: contactNumber?.trim() || existingPatient.contactNumber,
+      email: email?.toLowerCase().trim() || existingPatient.email,
+      center,
+      doctorId: assignedDoctorId,
+      updatedBy: currentUser._id
+    };
+
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      id, 
+      updateData, 
+      { new: true, runValidators: true }
+    )
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email');
+
+    res.status(200).json(updatedPatient);
   } catch (error) {
     console.error('Error updating patient:', error);
     
-    // Handle duplicate key error for patientId
-    if (error.code === 11000 && error.keyPattern?.patientId) {
-      return res.status(409).json({ 
-        message: 'Patient ID already exists. Please choose a different Patient ID.',
-        field: 'patientId'
-      });
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: errors.join(', ') });
     }
     
-    return res.status(500).json({ 
-      message: 'Failed to update patient', 
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      return res.status(400).json({ message: `Another patient with this ${field} already exists` });
+    }
+    
+    res.status(500).json({ message: 'Failed to update patient' });
   }
 };
 
-// Delete patient
-export const deletePatient = async (req, res) => {
-  const { patientId } = req.params;
-  console.log(patientId)
+// Export all existing functions with the new ones
+// export {
+//   getAllPatients,
+//   getPatientById,
+//   deletePatient,
+//   getPatientsByCenter,
+//   getPatientsByUser,
+//   getActivePatients,
+//   togglePatientStatus
+// } from "../controllers/patientController.js";
+
+export const getAllPatients = async (req, res) => {
   try {
-    const patient = await Patient.findByIdAndDelete(patientId);
+    const patients = await Patient.find()
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email');
+    
+    res.status(200).json(patients);
+  } catch (error) {
+    console.error('Error fetching patients:', error);
+    res.status(500).json({ message: 'Failed to fetch patients' });
+  }
+}
+
+export const getPatientById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const patient = await Patient.findById(id)
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email');
 
     if (!patient) {
       return res.status(404).json({ message: 'Patient not found' });
     }
 
-    await patient.remove();
-    return res.status(200).json({ message: 'Patient deleted successfully' });
+    res.status(200).json(patient);
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Error fetching patient:', error);
+    res.status(500).json({ message: 'Failed to fetch patient' });
   }
-};
+}
 
 
-
-// Updated searchPatients function for patientController.js
-export const searchPatients = async (req, res) => {
+export const deletePatient = async (req, res) => {
   try {
-    const { query } = req.query;
-    console.log("Received search query:", query);
-    
-    if (!query || query.trim() === '') {
-      console.log("No query provided or empty query");
-      return res.json([]);
+    const { id } = req.params;
+    const deletedPatient = await Patient.findByIdAndDelete(id);
+
+    if (!deletedPatient) {
+      return res.status(404).json({ message: 'Patient not found' });
     }
 
-    const searchTerm = query.trim();
-    console.log("Searching for patients with term:", searchTerm);
-
-    const patients = await Patient.find({
-      $or: [
-        { firstName: { $regex: searchTerm, $options: 'i' } },
-        { lastName: { $regex: searchTerm, $options: 'i' } },
-        { patientId: { $regex: searchTerm, $options: 'i' } },
-        { mobileNumber: { $regex: searchTerm, $options: 'i' } },
-        { phoneNumber: { $regex: searchTerm, $options: 'i' } }, // Added phoneNumber
-        { emailId: { $regex: searchTerm, $options: 'i' } }, // Added email search
-        { 
-          $expr: {
-            $regexMatch: {
-              input: { $concat: ["$firstName", " ", "$lastName"] },
-              regex: searchTerm,
-              options: "i"
-            }
-          }
-        } // Search full name
-      ],
-    }).limit(20); // Increased limit slightly
-
-    console.log(`Found ${patients.length} patients`);
-    res.json(patients);
+    res.status(200).json({ message: 'Patient deleted successfully' });
   } catch (error) {
-    console.error('Error searching patients:', error);
-    res.status(500).json({ 
-      message: 'Server error during search', 
-      error: error.message 
-    });
+    console.error('Error deleting patient:', error);
+    res.status(500).json({ message: 'Failed to delete patient' });
   }
-};
+}
+
+export const getPatientsByCenter = async (req, res) => {
+  try {
+    const { centerCode } = req.params;
+    const center = await Center.findOne({ centerCode });
+    if (!center) {
+      return res.status(404).json({ message: 'Center not found' });
+    }   
+    
+    const patients = await Patient.find({ center: center._id })
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email');
+    
+    res.status(200).json(patients); 
+  } catch (error) {
+    console.error('Error fetching patients by center:', error);
+    res.status(500).json({ message: 'Failed to fetch patients by center' });
+  }
+}
+
+export const getPatientsByUser = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate('center');
+
+    if (!user || !user.center) {
+      return res.status(404).json({ message: 'No center found for this user' });
+    }
+
+    const patients = await Patient.find({ center: user.center._id })
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email').populate('doctorId', 'name email');     
+    res.status(200).json(patients);
+  } catch (error) {
+    console.error('Error fetching patients by user:', error);
+    res.status(500).json({ message: 'Failed to fetch patients by user' });
+  }
+}
+
+export const getActivePatients = async (req, res) => {
+  try {
+    const activePatients = await Patient.find({ isActive: true })
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email');
+    
+    res.status(200).json(activePatients);
+  } catch (error) {
+    console.error('Error fetching active patients:', error);
+    res.status(500).json({ message: 'Failed to fetch active patients' });
+  }
+}
+
+export const togglePatientStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ message: 'isActive must be a boolean value' });
+    }
+
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      id, 
+      { isActive }, 
+      { new: true, runValidators: true }
+    )
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email');  
+
+    if (!updatedPatient) {
+        return res.status(404).json({ message: 'Patient not found' });  
+    }
+    res.status(200).json(updatedPatient);
+  } catch (error) {
+    console.error('Error toggling patient status:', error);
+    res.status(500).json({ message: 'Failed to toggle patient status' });
+  } 
+}
