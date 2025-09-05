@@ -11,7 +11,8 @@ import {
   getPatientsByUser,
   getActivePatients,
   togglePatientStatus,
-  getDoctorsByCenter // New function for fetching doctors
+  getDoctorsByCenter, // New function for fetching doctors
+  getPatientsByDoctor // New function for fetching patients by doctor
 } from '../controllers/patientController.js';
 
 const router = express.Router();
@@ -25,6 +26,9 @@ router.get('/active', authenticateJWT, getActivePatients);
 
 // Get patients by current user's center
 router.get('/user/patients', authenticateJWT, getPatientsByUser);
+
+// Get patients assigned to current doctor
+router.get('/doctor/patients', authenticateJWT, authorizeRoles('Doctor'), getPatientsByDoctor);
 
 // Get doctors by center (for Receptionist/Admin to assign to patients)
 router.get('/doctors/available', authenticateJWT, authorizeRoles('Receptionist', 'Admin', 'superAdmin'), getDoctorsByCenter);

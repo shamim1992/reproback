@@ -401,6 +401,42 @@ export const getActivePatients = async (req, res) => {
   }
 }
 
+// Get patients assigned to a specific doctor
+export const getPatientsByDoctor = async (req, res) => {
+  try {
+    const doctorId = req.user.id; // Get doctor ID from authenticated user
+    const user = await User.findById(doctorId).populate('center');
+
+    if (!user || user.role !== 'Doctor') {
+      return res.status(403).json({ 
+        message: 'Access denied. Only doctors can view their assigned patients.' 
+      });
+    }
+
+    if (!user.center) {
+      return res.status(404).json({ 
+        message: 'No center found for this doctor' 
+      });
+    }
+
+    // Find patients assigned to this doctor
+    const patients = await Patient.find({ 
+      doctorId: doctorId,
+      center: user.center._id 
+    })
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('doctorId', 'name email')
+      .sort({ createdAt: -1 }); // Sort by newest first
+    
+    res.status(200).json(patients);
+  } catch (error) {
+    console.error('Error fetching patients by doctor:', error);
+    res.status(500).json({ message: 'Failed to fetch patients by doctor' });
+  }
+}
+
 export const togglePatientStatus = async (req, res) => {
   try {
     const { id } = req.params;
