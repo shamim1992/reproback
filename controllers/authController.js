@@ -188,7 +188,7 @@ export const resetPassword = async (req, res) => {
   }
 };
 
-// Verify reset token (optional - for frontend validation)
+
 export const verifyResetToken = async (req, res) => {
   const { token } = req.params;
 
