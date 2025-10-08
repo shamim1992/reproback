@@ -1,10 +1,16 @@
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema({
-  name: {
+  firstName: {
     type: String,
-    required: [true, 'Name is required'],
+    required: [true, 'First name is required'],
     trim: true,
+  },
+  lastName: {
+    type: String,
+    required: false,
+    trim: true,
+    default: '',
   },
   username:{
     type: String,
@@ -24,22 +30,22 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Password is required'],
     minlength: [6, 'Password should be at least 6 characters'],
   },
-  contactNumber: {
+  phone: {
     type: String,
-    required: [true, 'Contact number is required'],
-    match: [/^[0-9]{10}$/, 'Please enter a valid 10-digit contact number'],
+    required: [true, 'Phone number is required'],
+    trim: true,
   },
   role: {
     type: String,
     enum: {
-      values: ['Admin', 'Doctor', 'Receptionist', 'Accountant', 'superAdmin'],
+      values: ['Admin', 'Doctor', 'Receptionist', 'Accountant', 'superAdmin', 'Lab Manager', 'Lab Technician', 'Lab Assistant', 'Lab Director', 'Quality Control', 'Super Consultant'],
       message: '{VALUE} is not a valid role',
     },
     required: true,
   },
-  center: {
+  centerId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Center', // Changed from 'center' to 'Center' to match the model registration
+    ref: 'Center',
   },
   
   isActive: {

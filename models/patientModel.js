@@ -1,6 +1,13 @@
 import mongoose from "mongoose";
 const patientSchema = new mongoose.Schema(
   {
+    uhid: {
+      type: String,
+      unique: true,
+      required: true,
+      trim: true,
+    },
+    
     name: {
       type: String,
       required: true,
@@ -76,7 +83,25 @@ const patientSchema = new mongoose.Schema(
       ref: "User",
     },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+  }
 );
+
+// Virtual field to calculate age from dateOfBirth
+patientSchema.virtual('age').get(function() {
+  if (!this.dateOfBirth) return null;
+  const today = new Date();
+  const birthDate = new Date(this.dateOfBirth);
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+});
+
 const Patient = mongoose.model("Patient", patientSchema);
 export default Patient;

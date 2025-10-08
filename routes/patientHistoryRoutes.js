@@ -20,10 +20,10 @@ router.use(authenticateJWT);
 
 // @route   POST /api/patient-history
 // @desc    Create new patient history
-// @access  Private (Doctor, Admin, Receptionist)
+// @access  Private (Doctor, Admin only)
 router.post(
   '/',
-  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'superAdmin'),
+  authorizeRoles('Doctor', 'Admin', 'superAdmin'),
   createPatientHistory
 );
 
@@ -32,7 +32,7 @@ router.post(
 // @access  Private (All authenticated users)
 router.get(
   '/',
-  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'Accountant', 'superAdmin'),
+  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'Accountant', 'superAdmin', 'Super Consultant'),
   getPatientHistories
 );
 
@@ -41,7 +41,7 @@ router.get(
 // @access  Private (All authenticated users)
 router.get(
   '/:id',
-  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'Accountant', 'superAdmin'),
+  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'Accountant', 'superAdmin', 'Super Consultant'),
   getPatientHistoryById
 );
 
@@ -50,7 +50,7 @@ router.get(
 // @access  Private (All authenticated users)
 router.get(
   '/patient/:patientId',
-  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'Accountant', 'superAdmin'),
+  authorizeRoles('Doctor', 'Admin', 'Receptionist', 'Accountant', 'superAdmin', 'Super Consultant'),
   getPatientHistoryByPatientId
 );
 

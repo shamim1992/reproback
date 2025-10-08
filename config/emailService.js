@@ -3,28 +3,59 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
 dotenv.config();
-// Create transporter with Brevo SMTP
-const transporter = nodemailer.createTransport({
-  host: 'smtp-relay.brevo.com',
-  port: 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.BREVO_SMTP_LOGIN, // Your Brevo login email
-    pass: process.env.BREVO_SMTP_KEY,   // Your Brevo SMTP key
-  },
-});
 
-// Verify transporter configuration
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('SMTP Configuration Error:', error);
-  } else {
-    console.log('SMTP Server is ready to send emails');
+// Create transporter only if credentials are available
+let transporter = null;
+
+const createTransporter = () => {
+  if (!process.env.BREVO_SMTP_LOGIN || !process.env.BREVO_SMTP_KEY) {
+    console.log('Brevo SMTP credentials not configured, email functionality disabled');
+    return null;
   }
-});
+
+  try {
+    return nodemailer.createTransport({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: process.env.BREVO_SMTP_LOGIN, // Your Brevo login email
+        pass: process.env.BREVO_SMTP_KEY,   // Your Brevo SMTP key
+      },
+    });
+  } catch (error) {
+    console.error('Failed to create Brevo SMTP transporter:', error.message);
+    return null;
+  }
+};
+
+// Initialize transporter if credentials are available
+if (process.env.BREVO_SMTP_LOGIN && process.env.BREVO_SMTP_KEY) {
+  transporter = createTransporter();
+  
+  // Verify transporter configuration only if it was created
+  if (transporter) {
+    transporter.verify((error, success) => {
+      if (error) {
+        console.error('SMTP Configuration Error:', error);
+      } else {
+        console.log('SMTP Server is ready to send emails');
+      }
+    });
+  }
+}
 
 export const sendPasswordResetEmail = async (email, resetToken, userName) => {
   try {
+    // Check if transporter is available
+    if (!transporter) {
+      console.log('Email transporter not available, skipping password reset email');
+      return { 
+        success: false, 
+        message: 'Email service not configured' 
+      };
+    }
+
     const resetUrl = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
     
     const mailOptions = {
@@ -243,6 +274,10 @@ export const sendPasswordResetEmail = async (email, resetToken, userName) => {
 // Test email function (optional - for testing your SMTP configuration)
 export const testEmailConnection = async () => {
   try {
+    if (!transporter) {
+      return { success: false, error: 'Email transporter not configured' };
+    }
+    
     await transporter.verify();
     console.log('✅ SMTP connection test successful');
     return { success: true, message: 'SMTP connection is working' };

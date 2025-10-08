@@ -6,6 +6,7 @@ const roleMiddleware = (roles) => {
       next();
     };
   };
-  
-  export default roleMiddleware;
+
+export const checkRole = roleMiddleware;
+export default roleMiddleware;
   

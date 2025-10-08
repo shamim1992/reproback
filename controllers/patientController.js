@@ -20,25 +20,42 @@ export const createPatient = async (req, res) => {
     } = req.body;
 
     // Get the current user who is creating the patient
-    const currentUser = await User.findById(req.user.id).populate('center');
+    const currentUser = await User.findById(req.user.id).populate('centerId');
     if (!currentUser) {
       return res.status(404).json({ message: 'User not found' });
     }
 
     // Always use the current user's assigned center
-    if (!currentUser.center) {
+    if (!currentUser.centerId) {
       return res.status(400).json({ 
         message: 'Your account is not assigned to any center. Please contact your administrator.' 
       });
     }
     
-    const center = currentUser.center;
+    const center = currentUser.centerId;
 
     // Check if patient with same email already exists
     const existingPatient = await Patient.findOne({ email: email.toLowerCase() });
     if (existingPatient) {
       return res.status(400).json({ message: 'Patient with this email already exists' });
     }
+
+    // Generate UHID: CenterCode (4 digits) + Sequential Number (4 digits)
+    const centerCode = center.centerCode.toString().padStart(4, '0');
+    
+    // Find the last patient for this center to get the next sequential number
+    const lastPatient = await Patient.findOne({ center: center._id })
+      .sort({ createdAt: -1 })
+      .select('uhid');
+    
+    let sequentialNumber = 1;
+    if (lastPatient && lastPatient.uhid) {
+      // Extract the last 4 digits and increment
+      const lastSequence = parseInt(lastPatient.uhid.slice(-4));
+      sequentialNumber = lastSequence + 1;
+    }
+    
+    const uhid = `${centerCode}${sequentialNumber.toString().padStart(4, '0')}`;
 
     // Doctor assignment logic based on user role
     let assignedDoctorId = null;
@@ -53,7 +70,7 @@ export const createPatient = async (req, res) => {
         const doctor = await User.findOne({ 
           _id: doctorId, 
           role: 'Doctor', 
-          center: center._id,
+          centerId: center._id,
           isActive: true 
         });
         
@@ -75,8 +92,9 @@ export const createPatient = async (req, res) => {
       }
     }
 
-    // Create the patient
+
     const patient = new Patient({
+      uhid,
       name: name.trim(),
       dateOfBirth,
       gender,
@@ -87,7 +105,7 @@ export const createPatient = async (req, res) => {
       address: address.trim(),
       contactNumber: contactNumber.trim(),
       email: email.toLowerCase().trim(),
-      doctorId: assignedDoctorId, // Will be null if no doctor assigned
+      doctorId: assignedDoctorId, 
       center: center._id,
       createdBy: currentUser._id
     });
@@ -96,8 +114,8 @@ export const createPatient = async (req, res) => {
     
     // Populate the saved patient before returning
     await savedPatient.populate('center', 'name address contactNumber centerCode');
-    await savedPatient.populate('createdBy', 'name email');
-    await savedPatient.populate('doctorId', 'name email'); // Populate doctor info
+    await savedPatient.populate('createdBy', 'firstName lastName email');
+    await savedPatient.populate('doctorId', 'firstName lastName email'); // Populate doctor info
     
     res.status(201).json(savedPatient);
   } catch (error) {
@@ -119,36 +137,6 @@ export const createPatient = async (req, res) => {
   }
 };
 
-// Helper function to get available doctors for a center
-export const getDoctorsByCenter = async (req, res) => {
-  try {
-    const currentUser = await User.findById(req.user.id).populate('center');
-    
-    if (!currentUser || !currentUser.center) {
-      return res.status(400).json({ 
-        message: 'User must be assigned to a center' 
-      });
-    }
-
-    // Only allow Receptionist and Admin to fetch doctors list
-    if (!['Receptionist', 'Admin', 'superAdmin'].includes(currentUser.role)) {
-      return res.status(403).json({ 
-        message: 'You do not have permission to view doctors list' 
-      });
-    }
-
-    const doctors = await User.find({
-      role: 'Doctor',
-      center: currentUser.center._id,
-      isActive: true
-    }).select('name email contactNumber').sort({ name: 1 });
-
-    res.status(200).json(doctors);
-  } catch (error) {
-    console.error('Error fetching doctors:', error);
-    res.status(500).json({ message: 'Failed to fetch doctors' });
-  }
-};
 
 // Update the existing functions to maintain doctor assignment logic
 export const updatePatient = async (req, res) => {
@@ -176,7 +164,7 @@ export const updatePatient = async (req, res) => {
     }
 
     // Get current user
-    const currentUser = await User.findById(req.user.id).populate('center');
+    const currentUser = await User.findById(req.user.id).populate('centerId');
     
     // Find center by centerCode if provided
     let center = existingPatient.center;
@@ -186,6 +174,8 @@ export const updatePatient = async (req, res) => {
         return res.status(404).json({ message: 'Center not found' });
       }
       center = foundCenter._id;
+    } else if (currentUser.centerId) {
+      center = currentUser.centerId._id;
     }
 
     // Check for email duplicates (excluding current patient)
@@ -223,7 +213,7 @@ export const updatePatient = async (req, res) => {
           const doctor = await User.findOne({ 
             _id: doctorId, 
             role: 'Doctor', 
-            center: currentUser.center._id,
+            centerId: currentUser.centerId._id,
             isActive: true 
           });
           
@@ -260,9 +250,9 @@ export const updatePatient = async (req, res) => {
       { new: true, runValidators: true }
     )
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email');
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email');
 
     res.status(200).json(updatedPatient);
   } catch (error) {
@@ -297,9 +287,9 @@ export const getAllPatients = async (req, res) => {
   try {
     const patients = await Patient.find()
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email');
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email');
     
     res.status(200).json(patients);
   } catch (error) {
@@ -313,9 +303,9 @@ export const getPatientById = async (req, res) => {
     const { id } = req.params;
     const patient = await Patient.findById(id)
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email');
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email');
 
     if (!patient) {
       return res.status(404).json({ message: 'Patient not found' });
@@ -355,9 +345,9 @@ export const getPatientsByCenter = async (req, res) => {
     
     const patients = await Patient.find({ center: center._id })
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email');
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email');
     
     res.status(200).json(patients); 
   } catch (error) {
@@ -366,33 +356,14 @@ export const getPatientsByCenter = async (req, res) => {
   }
 }
 
-export const getPatientsByUser = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const user = await User.findById(userId).populate('center');
-
-    if (!user || !user.center) {
-      return res.status(404).json({ message: 'No center found for this user' });
-    }
-
-    const patients = await Patient.find({ center: user.center._id })
-      .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email').populate('doctorId', 'name email');     
-    res.status(200).json(patients);
-  } catch (error) {
-    console.error('Error fetching patients by user:', error);
-    res.status(500).json({ message: 'Failed to fetch patients by user' });
-  }
-}
 
 export const getActivePatients = async (req, res) => {
   try {
     const activePatients = await Patient.find({ isActive: true })
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email');
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email');
     
     res.status(200).json(activePatients);
   } catch (error) {
@@ -405,7 +376,7 @@ export const getActivePatients = async (req, res) => {
 export const getPatientsByDoctor = async (req, res) => {
   try {
     const doctorId = req.user.id; // Get doctor ID from authenticated user
-    const user = await User.findById(doctorId).populate('center');
+    const user = await User.findById(doctorId).populate('centerId');
 
     if (!user || user.role !== 'Doctor') {
       return res.status(403).json({ 
@@ -413,21 +384,36 @@ export const getPatientsByDoctor = async (req, res) => {
       });
     }
 
-    if (!user.center) {
+    if (!user.centerId) {
       return res.status(404).json({ 
         message: 'No center found for this doctor' 
       });
     }
 
-    // Find patients assigned to this doctor
+    // Import ComprehensiveBilling model
+    const ComprehensiveBilling = (await import('../models/comprehensiveBillingModel.js')).default;
+
+    // Find all comprehensive billing records with payment (paid or partial) for this doctor
+    const paidBillings = await ComprehensiveBilling.find({
+      doctor: doctorId,
+      center: user.centerId._id,
+      paymentStatus: { $in: ['paid', 'partial'] },
+      paidAmount: { $gt: 0 },
+      isActive: true
+    }).select('patient').lean();
+
+    // Extract unique patient IDs from paid billings
+    const paidPatientIds = [...new Set(paidBillings.map(b => b.patient.toString()))];
+
+    // Find patients assigned to this doctor who have paid consultation fees
     const patients = await Patient.find({ 
-      doctorId: doctorId,
-      center: user.center._id 
+      _id: { $in: paidPatientIds },
+      center: user.centerId._id 
     })
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email')
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email')
       .sort({ createdAt: -1 }); // Sort by newest first
     
     res.status(200).json(patients);
@@ -452,9 +438,9 @@ export const togglePatientStatus = async (req, res) => {
       { new: true, runValidators: true }
     )
       .populate('center', 'name address contactNumber')
-      .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email')
-      .populate('doctorId', 'name email');  
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email');  
 
     if (!updatedPatient) {
         return res.status(404).json({ message: 'Patient not found' });  
@@ -464,4 +450,69 @@ export const togglePatientStatus = async (req, res) => {
     console.error('Error toggling patient status:', error);
     res.status(500).json({ message: 'Failed to toggle patient status' });
   } 
+}
+
+// Get patients by current user's center
+export const getPatientsByUser = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate('centerId');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.centerId) {
+      return res.status(400).json({ 
+        message: 'Your account is not assigned to any center. Please contact your administrator.' 
+      });
+    }
+
+    // Find patients in the user's center
+    const patients = await Patient.find({ 
+      center: user.centerId._id 
+    })
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email')
+      .sort({ createdAt: -1 }); // Sort by newest first
+    
+    res.status(200).json(patients);
+  } catch (error) {
+    console.error('Error fetching patients by user:', error);
+    res.status(500).json({ message: 'Failed to fetch patients by user' });
+  }
+}
+
+// Get doctors by center
+export const getDoctorsByCenter = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate('centerId');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.centerId) {
+      return res.status(400).json({ 
+        message: 'Your account is not assigned to any center. Please contact your administrator.' 
+      });
+    }
+
+    // Find doctors in the user's center
+    const doctors = await User.find({ 
+      role: 'Doctor',
+      centerId: user.centerId._id,
+      isActive: true
+    })
+      .select('firstName lastName email phone')
+      .sort({ firstName: 1 }); // Sort by first name
+    
+    res.status(200).json(doctors);
+  } catch (error) {
+    console.error('Error fetching doctors by center:', error);
+    res.status(500).json({ message: 'Failed to fetch doctors by center' });
+  }
 }

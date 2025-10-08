@@ -36,7 +36,7 @@ router.get('/doctors/available', authenticateJWT, authorizeRoles('Receptionist',
 // Get patients by center code
 router.get('/center/:centerCode', authenticateJWT, getPatientsByCenter);
 
-// Get patient by ID
+// Get patient by ID (Super Consultant can access all patients)
 router.get('/:id', authenticateJWT, getPatientById);
 
 // Create patient (Admin/SuperAdmin/Doctor/Receptionist)

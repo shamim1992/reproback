@@ -8,7 +8,7 @@ import { sendPasswordResetEmail } from '../config/emailService.js';
 // User signup
 export const registerUser = async (req, res) => {
   try {
-    const { name, username, email, password, role, consultationCharges, contactNumber } = req.body;
+    const { firstName, lastName, username, email, password, role, phone } = req.body;
 
     const userExists = await User.findOne({ email });
     console.log("Existing user : ", userExists)
@@ -20,47 +20,112 @@ export const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      name,
+      firstName: firstName || '',
+      lastName: lastName || '',
       username,
       email,
       password: hashedPassword,
       role,
-      contactNumber,
-      consultationCharges: role === 'Doctor' ? consultationCharges : null,
+      phone: phone || '',
+      isActive: true
     });
 
-    const token = jwt.sign({ id: user._id, role: user.role }, jwtConfig.secret, {
+    const token = jwt.sign({ 
+      id: user._id, 
+      role: user.role, 
+      centerId: user.centerId 
+    }, jwtConfig.secret, {
       expiresIn: jwtConfig.expiresIn,
     });
 
     return res.status(201).json({
       message: 'User registered successfully',
       token,
-      user: { id: user._id, name: user.name, role: user.role },
+      user: { 
+        id: user._id, 
+        firstName: user.firstName, 
+        lastName: user.lastName, 
+        role: user.role 
+      },
     });
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Register error:', error);
+    
+    // Check if it's a database connection error
+    if (error.name === 'MongoNetworkError' || error.message.includes('ECONNREFUSED')) {
+      return res.status(503).json({ 
+        message: 'Database connection failed. Please try again later.',
+        error: 'Database unavailable'
+      });
+    }
+    
+    return res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message || 'Unknown error'
+    });
   }
 };
 
 // User login
 export const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, username, password } = req.body;
+
+  console.log('Login request received:', {
+    email,
+    username,
+    hasPassword: !!password,
+    body: req.body
+  });
 
   try {
-    const user = await User.findOne({email}).populate('center', 'name centerCode');
+    // Check if user provided email or username
+    if (!email && !username) {
+      console.log('No email or username provided');
+      return res.status(400).json({ message: 'Email or username is required' });
+    }
+
+    // Find user by email or username
+    const user = await User.findOne({
+      $or: [
+        { email: email },
+        { username: username }
+      ]
+    }).populate('centerId', 'name centerCode');
+
+    console.log('User found:', {
+      found: !!user,
+      id: user?._id,
+      email: user?.email,
+      username: user?.username,
+      role: user?.role,
+      centerId: user?.centerId,
+      isActive: user?.isActive
+    });
 
     if (!user) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      console.log('No user found with email/username:', { email, username });
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Check if user is active
+    if (!user.isActive) {
+      console.log('User account is inactive:', user.email);
+      return res.status(400).json({ message: 'Account is inactive. Please contact administrator.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
+    console.log('Password match:', isMatch);
 
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid email or password' });
+      console.log('Password mismatch for user:', user.email);
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: user._id, role: user.role }, jwtConfig.secret, {
+    const token = jwt.sign({ 
+      id: user._id, 
+      role: user.role, 
+      centerId: user.centerId 
+    }, jwtConfig.secret, {
       expiresIn: jwtConfig.expiresIn,
     });
 
@@ -70,24 +135,40 @@ export const loginUser = async (req, res) => {
       user,
     });
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Login error:', error);
+    
+    // Check if it's a database connection error
+    if (error.name === 'MongoNetworkError' || error.message.includes('ECONNREFUSED')) {
+      return res.status(503).json({ 
+        message: 'Database connection failed. Please try again later.',
+        error: 'Database unavailable'
+      });
+    }
+    
+    return res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message || 'Unknown error'
+    });
   }
 };
 
 // Get user profile
 export const getUserProfile = async (req, res) => {
-  const { id } = req.user;
-
   try {
-    const user = await User.findById(id).select('-password'); // Exclude password
+    const userId = req.user.id;
+    
+    const user = await User.findById(userId)
+      .populate('centerId', 'name centerCode')
+      .select('-password -resetPasswordToken -resetPasswordExpires');
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    return res.status(200).json({ user });
+    return res.status(200).json(user);
   } catch (error) {
-    return res.status(500).json({ message: 'Server error', error });
+    console.error('Get user profile error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -120,7 +201,10 @@ export const forgotPassword = async (req, res) => {
 
     // Send email
     try {
-      await sendPasswordResetEmail(user.email, resetToken, user.name);
+      const userName = user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}` 
+        : user.name || 'User';
+      await sendPasswordResetEmail(user.email, resetToken, userName);
       
       return res.status(200).json({
         message: 'Password reset link has been sent to your email address.'
@@ -189,6 +273,7 @@ export const resetPassword = async (req, res) => {
 };
 
 
+// Verify reset token (optional - for frontend validation)
 export const verifyResetToken = async (req, res) => {
   const { token } = req.params;
 
@@ -213,6 +298,78 @@ export const verifyResetToken = async (req, res) => {
 
   } catch (error) {
     console.error('Verify reset token error:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Change password
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ 
+        message: 'Current password and new password are required',
+        errors: {
+          currentPassword: !currentPassword ? 'Current password is required' : '',
+          newPassword: !newPassword ? 'New password is required' : ''
+        }
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        message: 'New password must be at least 6 characters long',
+        errors: {
+          newPassword: 'New password must be at least 6 characters long'
+        }
+      });
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({ 
+        message: 'Current password is incorrect',
+        errors: {
+          currentPassword: 'Current password is incorrect'
+        }
+      });
+    }
+
+    // Check if new password is different from current password
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({ 
+        message: 'New password must be different from current password',
+        errors: {
+          newPassword: 'New password must be different from current password'
+        }
+      });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password
+    user.password = hashedNewPassword;
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Password changed successfully'
+    });
+
+  } catch (error) {
+    console.error('Change password error:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

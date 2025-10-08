@@ -4,12 +4,31 @@ import bcrypt from 'bcryptjs';
 
 // Create user with center assignment logic
 export const createUser = async (req, res) => {
-  const { name, username, email, password, role, contactNumber, centerCode } = req.body;
+  const { firstName, lastName, username, email, password, role, phone, centerCode } = req.body;
+
+  console.log('Create user request:', { firstName, lastName, username, email, role, phone, centerCode });
+  console.log('Request user:', req.user);
+  console.log('Role validation - checking role:', role);
 
   try {
     // Input validation
-    if (!name || !username || !email || !password || !role || !contactNumber) {
-      return res.status(400).json({ message: 'All required fields must be provided' });
+    if (!firstName) {
+      return res.status(400).json({ message: 'First name is required' });
+    }
+    if (!username) {
+      return res.status(400).json({ message: 'Username is required' });
+    }
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required' });
+    }
+    if (!role) {
+      return res.status(400).json({ message: 'Role is required' });
+    }
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
     }
 
     // Check if user already exists
@@ -45,19 +64,22 @@ export const createUser = async (req, res) => {
         return res.status(404).json({ message: 'Center not found with provided center code' });
       }
 
-    } else if (role === 'Doctor' || role === 'Receptionist') {
-      // Admin creates Doctor/Receptionist for their center
+    } else if (role === 'Doctor' || role === 'Receptionist' || role === 'Accountant' || 
+               role === 'Lab Manager' || role === 'Lab Technician' || role === 'Lab Assistant' || 
+               role === 'Lab Director' || role === 'Quality Control' || role === 'Super Consultant') {
+      console.log('Role validation passed for:', role);
+      // Admin creates users for their center
       if (req.user.role !== 'Admin' && req.user.role !== 'superAdmin') {
-        return res.status(403).json({ message: 'Only Admin or SuperAdmin can create Doctors/Receptionists' });
+        return res.status(403).json({ message: 'Only Admin or SuperAdmin can create users' });
       }
 
       if (req.user.role === 'Admin') {
         // Admin can only create users for their own center
-        const adminUser = await User.findById(req.user.id).populate('center');
-        if (!adminUser || !adminUser.center) {
+        const adminUser = await User.findById(req.user.id).populate('centerId');
+        if (!adminUser || !adminUser.centerId) {
           return res.status(400).json({ message: 'Admin must be assigned to a center to create users' });
         }
-        centerToAssign = adminUser.center;
+        centerToAssign = adminUser.centerId;
       } else if (req.user.role === 'superAdmin') {
         // SuperAdmin can assign to any center if centerCode is provided
         if (centerCode) {
@@ -73,6 +95,9 @@ export const createUser = async (req, res) => {
       if (req.user.role !== 'superAdmin') {
         return res.status(403).json({ message: 'Only SuperAdmin can create other SuperAdmins' });
       }
+    } else {
+      console.log('Role not recognized:', role);
+      return res.status(400).json({ message: `Invalid role: ${role}. Valid roles are: Admin, Doctor, Receptionist, Accountant, Lab Manager, Lab Technician, Lab Assistant, Lab Director, Quality Control, Super Consultant, superAdmin` });
     }
 
     // Hash password
@@ -80,19 +105,21 @@ export const createUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const newUser = new User({
-      name: name.trim(),
+      firstName: firstName.trim(),
+      lastName: lastName ? lastName.trim() : '',
       username: username.trim(),
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       role,
-      contactNumber: contactNumber.trim(),
-      center: centerToAssign ? centerToAssign._id : null,
+      phone: phone.trim(),
+      centerId: centerToAssign ? centerToAssign._id : undefined,
+      isActive: true
     });
 
     const savedUser = await newUser.save();
     
     // Populate center info before sending response
-    await savedUser.populate('center', 'name centerCode address');
+    await savedUser.populate('centerId', 'name centerCode address');
     
     // Remove password from response
     const userResponse = savedUser.toObject();
@@ -106,17 +133,21 @@ export const createUser = async (req, res) => {
     });
   } catch (error) {
     console.error('Create user error:', error);
+    console.error('Error stack:', error.stack);
     
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => e.message);
+      console.error('Validation errors:', errors);
       return res.status(400).json({ message: errors.join(', ') });
     }
     
     if (error.code === 11000) {
       const field = Object.keys(error.keyValue)[0];
+      console.error('Duplicate key error:', field, error.keyValue);
       return res.status(400).json({ message: `User with this ${field} already exists` });
     }
     
+    console.error('Unknown error:', error.message);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -124,7 +155,9 @@ export const createUser = async (req, res) => {
 // Update a user
 export const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { name, email, contactNumber, centerCode } = req.body;
+  const { firstName, lastName, email, phone, centerCode } = req.body;
+
+  console.log('Update user request:', { id, body: req.body });
 
   try {
     const existingUser = await User.findById(id);
@@ -135,16 +168,17 @@ export const updateUser = async (req, res) => {
     // Role-based access control
     if (req.user.role === 'Admin') {
       const adminUser = await User.findById(req.user.id);
-      if (adminUser && adminUser.center && 
-          (!existingUser.center || existingUser.center.toString() !== adminUser.center.toString())) {
-        return res.status(403).json({ message: 'Access denied' });
+      if (adminUser && adminUser.centerId && 
+          (!existingUser.centerId || existingUser.centerId.toString() !== adminUser.centerId.toString())) {
+        return res.status(403).json({ message: 'Access denied. You can only update users from your assigned center.' });
       }
     }
 
     const updateData = {};
-    if (name) updateData.name = name.trim();
-    if (email) updateData.email = email.toLowerCase().trim();
-    if (contactNumber) updateData.contactNumber = contactNumber.trim();
+    if (firstName !== undefined) updateData.firstName = firstName.trim();
+    if (lastName !== undefined) updateData.lastName = lastName.trim();
+    if (email !== undefined) updateData.email = email.toLowerCase().trim();
+    if (phone !== undefined) updateData.phone = phone.trim();
 
     // Handle center reassignment (only SuperAdmin can do this)
     if (centerCode && req.user.role === 'superAdmin') {
@@ -152,14 +186,21 @@ export const updateUser = async (req, res) => {
       if (!newCenter) {
         return res.status(404).json({ message: 'Center not found with provided center code' });
       }
-      updateData.center = newCenter._id;
+      updateData.centerId = newCenter._id;
     }
+
+    // Check if there's any data to update
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ message: 'No valid fields provided for update' });
+    }
+
+    console.log('Updating user with data:', updateData);
 
     const updatedUser = await User.findByIdAndUpdate(
       id,
       { $set: updateData },
       { new: true, runValidators: true }
-    ).populate('center', 'name centerCode address')
+    ).populate('centerId', 'name centerCode address')
      .select('-password -resetPasswordToken -resetPasswordExpires');
 
     res.status(200).json({
@@ -197,9 +238,9 @@ export const deleteUser = async (req, res) => {
     // Role-based access control
     if (req.user.role === 'Admin') {
       const adminUser = await User.findById(req.user.id);
-      if (adminUser && adminUser.center && 
-          (!user.center || user.center.toString() !== adminUser.center.toString())) {
-        return res.status(403).json({ message: 'Access denied' });
+      if (adminUser && adminUser.centerId && 
+          (!user.centerId || user.centerId.toString() !== adminUser.centerId.toString())) {
+        return res.status(403).json({ message: 'Access denied. You can only delete users from your assigned center.' });
       }
     }
 
@@ -221,7 +262,7 @@ export const getDoctorById = async (req, res) => {
   const { id } = req.params;
   try {
     const doctor = await User.findById(id)
-      .populate('center', 'name centerCode address');
+      .populate('centerId', 'name centerCode address');
       
     if (!doctor || doctor.role !== 'Doctor') {
       return res.status(404).json({ message: 'Doctor not found' });
@@ -230,8 +271,8 @@ export const getDoctorById = async (req, res) => {
     // Role-based access control
     if (req.user.role === 'Admin') {
       const adminUser = await User.findById(req.user.id);
-      if (adminUser && adminUser.center && 
-          (!doctor.center || doctor.center._id.toString() !== adminUser.center.toString())) {
+      if (adminUser && adminUser.centerId && 
+          (!doctor.centerId || doctor.centerId._id.toString() !== adminUser.centerId.toString())) {
         return res.status(403).json({ message: 'Access denied' });
       }
     }
@@ -257,17 +298,17 @@ export const getDoctors = async (req, res) => {
     // Role-based access control
     if (req.user.role === 'Admin') {
       const adminUser = await User.findById(req.user.id);
-      if (adminUser && adminUser.center) {
-        query.center = adminUser.center;
+      if (adminUser && adminUser.centerId) {
+        query.centerId = adminUser.centerId;
       } else {
         return res.status(400).json({ message: 'Admin must be assigned to a center' });
       }
     }
 
     const doctors = await User.find(query)
-      .populate('center', 'name centerCode address')
+      .populate('centerId', 'name centerCode address')
       .select('-password -resetPasswordToken -resetPasswordExpires')
-      .sort({ name: 1 });
+      .sort({ firstName: 1 });
 
     res.status(200).json(doctors);
   } catch (error) {
@@ -289,8 +330,9 @@ export const searchDoctor = async (req, res) => {
       role: 'Doctor',
       isActive: true,
       $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { contactNumber: { $regex: query, $options: 'i' } },
+        { firstName: { $regex: query, $options: 'i' } },
+        { lastName: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
         { email: { $regex: query, $options: 'i' } }
       ]
     };
@@ -298,18 +340,18 @@ export const searchDoctor = async (req, res) => {
     // Role-based access control
     if (req.user.role === 'Admin') {
       const adminUser = await User.findById(req.user.id);
-      if (adminUser && adminUser.center) {
-        searchCriteria.center = adminUser.center;
+      if (adminUser && adminUser.centerId) {
+        searchCriteria.centerId = adminUser.centerId;
       } else {
         return res.status(400).json({ message: 'Admin must be assigned to a center' });
       }
     }
 
     const doctors = await User.find(searchCriteria)
-      .populate('center', 'name centerCode address')
+      .populate('centerId', 'name centerCode address')
       .select('-password -resetPasswordToken -resetPasswordExpires')
       .limit(10)
-      .sort({ name: 1 });
+      .sort({ firstName: 1 });
 
     res.status(200).json({
       count: doctors.length,
@@ -321,11 +363,82 @@ export const searchDoctor = async (req, res) => {
   }
 };
 
+// Get user by ID
+export const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('=== getUserById Debug Info ===');
+    console.log('Requested user ID:', id);
+    console.log('Current user from JWT:', req.user);
+    console.log('Current user role:', req.user.role);
+    console.log('Current user ID:', req.user.id);
+    console.log('Current user centerId from JWT:', req.user.centerId);
+    
+    const user = await User.findById(id)
+      .populate('centerId', 'name centerCode address')
+      .select('-password -resetPasswordToken -resetPasswordExpires');
+
+    if (!user) {
+      console.log('User not found with ID:', id);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log('Found user:', {
+      id: user._id,
+      name: user.firstName + ' ' + user.lastName,
+      role: user.role,
+      centerId: user.centerId
+    });
+
+    // Role-based access control
+    if (req.user.role === 'Admin') {
+      const adminUser = await User.findById(req.user.id);
+      console.log('Admin user from DB:', {
+        id: adminUser?._id,
+        role: adminUser?.role,
+        centerId: adminUser?.centerId
+      });
+      
+      // Check if admin has centerId assigned
+      if (!adminUser || !adminUser.centerId) {
+        console.log('Admin user not found or no center assigned');
+        return res.status(403).json({ message: 'Access denied. Admin must be assigned to a center.' });
+      }
+      
+      // Check if requested user has centerId
+      if (!user.centerId) {
+        console.log('Requested user has no center assigned');
+        return res.status(403).json({ message: 'Access denied. User has no center assigned.' });
+      }
+      
+      // Compare centerIds
+      const adminCenterId = adminUser.centerId.toString();
+      const userCenterId = user.centerId._id.toString();
+      console.log('Center comparison:', {
+        adminCenterId,
+        userCenterId,
+        match: adminCenterId === userCenterId
+      });
+      
+      if (adminCenterId !== userCenterId) {
+        console.log('Access denied - center mismatch');
+        return res.status(403).json({ message: 'Access denied. You can only view users from your assigned center.' });
+      }
+    }
+
+    console.log('Access granted - returning user data');
+    res.status(200).json(user);
+  } catch (error) {
+    console.error('Get user by ID error:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
 // Get all users
 export const getAllUsers = async (req, res) => {
     try {
         const users = await User.find()
-            .populate('center', 'name centerCode')
+            .populate('centerId', 'name centerCode')
             .select('-password')
             .sort({ createdAt: -1 });
         
@@ -348,8 +461,8 @@ export const getUsersByCenter = async (req, res) => {
         }
 
         // Find all users belonging to this center
-        const users = await User.find({ center: centerId })
-            .populate('center', 'name centerCode')
+        const users = await User.find({ centerId: centerId })
+            .populate('centerId', 'name centerCode')
             .select('-password')
             .sort({ createdAt: -1 });
         
@@ -360,25 +473,6 @@ export const getUsersByCenter = async (req, res) => {
     }
 };
 
-// Get user by ID
-export const getUserById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        const user = await User.findById(id)
-            .populate('center', 'name centerCode address email contactNumber')
-            .select('-password');
-
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        res.status(200).json(user);
-    } catch (error) {
-        console.error('Get user by ID error:', error);
-        res.status(500).json({ message: 'Internal server error', error: error.message });
-    }
-};
 
 
 // Toggle user status
@@ -396,7 +490,7 @@ export const toggleUserStatus = async (req, res) => {
             { isActive },
             { new: true, runValidators: true }
         )
-        .populate('center', 'name centerCode')
+        .populate('centerId', 'name centerCode')
         .select('-password');
 
         if (!updatedUser) {
@@ -416,7 +510,7 @@ export const updateUserRole = async (req, res) => {
         const { id } = req.params;
         const { role } = req.body;
 
-        const validRoles = ['Admin', 'Manager', 'Employee', 'superAdmin'];
+        const validRoles = ['Admin', 'Doctor', 'Receptionist', 'Accountant', 'Lab Manager', 'Lab Technician', 'Lab Assistant', 'Lab Director', 'Quality Control', 'Super Consultant', 'superAdmin'];
         if (!validRoles.includes(role)) {
             return res.status(400).json({ message: 'Invalid role specified' });
         }
@@ -426,7 +520,7 @@ export const updateUserRole = async (req, res) => {
             { role },
             { new: true, runValidators: true }
         )
-        .populate('center', 'name centerCode')
+        .populate('centerId', 'name centerCode')
         .select('-password');
 
         if (!updatedUser) {
@@ -446,19 +540,19 @@ export const updateUserRole = async (req, res) => {
 export const getUsersByCurrentUserCenter = async (req, res) => {
     try {
         const userId = req.user.id;
-        const currentUser = await User.findById(userId).populate('center');
+        const currentUser = await User.findById(userId).populate('centerId');
 
         if (!currentUser) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        if (!currentUser.center) {
+        if (!currentUser.centerId) {
             return res.status(404).json({ message: 'No center found for this user' });
         }
 
         // Find all users in the same center
-        const users = await User.find({ center: currentUser.center._id })
-            .populate('center', 'name centerCode')
+        const users = await User.find({ centerId: currentUser.centerId._id })
+            .populate('centerId', 'name centerCode')
             .select('-password -resetPasswordToken -resetPasswordExpires')
             .sort({ createdAt: -1 });
         

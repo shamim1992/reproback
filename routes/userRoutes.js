@@ -18,7 +18,7 @@ const router = express.Router();
 router.get('/', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), getAllUsers);
 router.get('/center/:centerId', authenticateJWT, getUsersByCenter);
 router.get('/my-center', authenticateJWT, getUsersByCurrentUserCenter);
-router.get('/:id', authenticateJWT, getUserById);
+router.get('/:id', authenticateJWT, getUserById); // Admin can view users from their center
 router.post('/', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), createUser);
 router.put('/:id', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), updateUser);
 router.delete('/:id', authenticateJWT, authorizeRoles('Admin', 'superAdmin'), deleteUser);
