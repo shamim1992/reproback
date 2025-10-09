@@ -912,9 +912,10 @@ export const getBillingAnalytics = async (req, res) => {
         dateFilter = { createdAt: { $gte: defaultStartOfMonth } };
     }
 
-    // Build base filter
+    // Build base filter - EXCLUDE cancelled and refunded bills from analytics
     let filter = { 
       isActive: true,
+      paymentStatus: { $nin: ['cancelled', 'refunded'] }, // Exclude cancelled and refunded bills
       ...dateFilter
     };
     
@@ -978,7 +979,11 @@ export const getBillingAnalytics = async (req, res) => {
       paymentStatusBreakdown,
       monthlyTrend,
       topPatients,
-      recentBills
+      recentBills,
+      cancelledBills,
+      refundedBills,
+      cancelledAmount,
+      refundedAmount
     ] = await Promise.all([
       // Total revenue (using paidAmount for actual revenue received)
       Billing.aggregate([
@@ -1153,17 +1158,73 @@ export const getBillingAnalytics = async (req, res) => {
         { $limit: 10 }
       ]),
 
-      // Recent bills with details
-      Billing.find(filter)
+      // Recent bills with details - INCLUDE ALL BILLS (active, cancelled, refunded)
+      // Fetch up to 100 bills for pagination on frontend
+      Billing.find({
+        isActive: true,
+        ...dateFilter,
+        ...(centerId && centerId !== 'all' ? { center: new mongoose.Types.ObjectId(centerId) } : 
+           (req.user.role !== 'superAdmin' && req.user.role !== 'Super Consultant' ? { center: req.user.centerId } : {}))
+      })
         .populate('patient', 'name email contactNumber')
         .populate('center', 'name centerCode')
         .populate('doctor', 'firstName lastName')
         .populate('paymentHistory.processedBy', 'firstName lastName')
         .sort({ createdAt: -1 })
-        .limit(10)
+        .limit(100),
+      
+      // Cancelled bills count (using paymentStatus)
+      Billing.countDocuments({ 
+        isActive: true, 
+        paymentStatus: 'cancelled',
+        ...dateFilter,
+        ...(centerId && centerId !== 'all' ? { center: new mongoose.Types.ObjectId(centerId) } : 
+           (req.user.role !== 'superAdmin' && req.user.role !== 'Super Consultant' ? { center: req.user.centerId } : {}))
+      }),
+      
+      // Refunded bills count (using paymentStatus)
+      Billing.countDocuments({ 
+        isActive: true, 
+        paymentStatus: 'refunded',
+        ...dateFilter,
+        ...(centerId && centerId !== 'all' ? { center: new mongoose.Types.ObjectId(centerId) } : 
+           (req.user.role !== 'superAdmin' && req.user.role !== 'Super Consultant' ? { center: req.user.centerId } : {}))
+      }),
+      
+      // Cancelled amount (using paymentStatus)
+      Billing.aggregate([
+        { 
+          $match: { 
+            isActive: true, 
+            paymentStatus: 'cancelled',
+            ...dateFilter,
+            ...(centerId && centerId !== 'all' ? { center: new mongoose.Types.ObjectId(centerId) } : 
+               (req.user.role !== 'superAdmin' && req.user.role !== 'Super Consultant' ? { center: req.user.centerId } : {}))
+          } 
+        },
+        { $group: { _id: null, total: { $sum: '$totalAmount' } } }
+      ]),
+      
+      // Refunded amount (using paymentStatus and refundAmount field)
+      Billing.aggregate([
+        { 
+          $match: { 
+            isActive: true, 
+            paymentStatus: 'refunded',
+            ...dateFilter,
+            ...(centerId && centerId !== 'all' ? { center: new mongoose.Types.ObjectId(centerId) } : 
+               (req.user.role !== 'superAdmin' && req.user.role !== 'Super Consultant' ? { center: req.user.centerId } : {}))
+          } 
+        },
+        { $group: { _id: null, total: { $sum: { $ifNull: ['$refundAmount', '$paidAmount'] } } } }
+      ])
     ]);
 
     console.log('Top patients raw data:', JSON.stringify(topPatients, null, 2));
+    console.log('Cancelled bills count:', cancelledBills);
+    console.log('Refunded bills count:', refundedBills);
+    console.log('Cancelled amount:', cancelledAmount);
+    console.log('Refunded amount:', refundedAmount);
 
     const analytics = {
       // Basic metrics
@@ -1176,6 +1237,12 @@ export const getBillingAnalytics = async (req, res) => {
       patientsSinglePayment: patientsSinglePayment[0]?.count || 0,
       patientsMultiPayment: patientsMultiPayment[0]?.count || 0,
       averageBillAmount: totalBills > 0 ? (totalBillAmounts[0]?.total || 0) / totalBills : 0,
+      
+      // Cancelled and Refunded metrics
+      cancelledBills: cancelledBills || 0,
+      refundedBills: refundedBills || 0,
+      cancelledAmount: cancelledAmount[0]?.total || 0,
+      refundedAmount: refundedAmount[0]?.total || 0,
       
       // Payment status breakdown with amounts
       paymentStatusBreakdown: paymentStatusBreakdown.map(item => ({
