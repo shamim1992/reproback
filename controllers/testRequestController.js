@@ -11,7 +11,7 @@ export const getTestRequestsByDoctor = async (req, res) => {
     const { doctorId } = req.params;
     
     const testRequests = await TestRequest.find({ doctorId })
-      .populate('patientId', 'firstName lastName name email phone contactNumber address')
+      .populate('patientId', 'firstName lastName name email phone contactNumber address uhid')
       .populate('assignedTo', 'firstName lastName name email')
       .populate('centerId', 'name centerCode')
       .populate('labReport.generatedBy', 'firstName lastName name')
@@ -83,7 +83,7 @@ export const getAllTestRequests = async (req, res) => {
 
     const testRequests = await TestRequest.find(filter)
       .populate('doctorId', 'firstName lastName name email')
-      .populate('patientId', 'firstName lastName name email phone contactNumber address')
+      .populate('patientId', 'firstName lastName name email phone contactNumber address uhid')
       .populate('assignedTo', 'firstName lastName name email')
       .populate('centerId', 'name centerCode')
       .populate('labReport.generatedBy', 'firstName lastName name')
@@ -133,7 +133,7 @@ export const createTestRequest = async (req, res) => {
 
     // Populate the response
     await testRequest.populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'centerId', select: 'name centerCode' }
     ]);
 
@@ -155,7 +155,7 @@ export const updateTestRequest = async (req, res) => {
       updateData,
       { new: true, runValidators: true }
     ).populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },
@@ -211,7 +211,7 @@ export const updateTestRequestStatus = async (req, res) => {
       updateData,
       { new: true, runValidators: true }
     ).populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },
@@ -272,7 +272,7 @@ export const uploadLabReport = async (req, res) => {
     await testRequest.save();
 
     await testRequest.populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },
@@ -418,7 +418,7 @@ export const getTestRequestsForLabStaff = async (req, res) => {
 
     const testRequests = await TestRequest.find(filter)
       .populate('doctorId', 'firstName lastName name email')
-      .populate('patientId', 'firstName lastName name email phone contactNumber address')
+      .populate('patientId', 'firstName lastName name email phone contactNumber address uhid')
       .populate('assignedTo', 'firstName lastName name email')
       .populate('centerId', 'name centerCode')
       .populate('labReport.generatedBy', 'firstName lastName name')
@@ -562,7 +562,7 @@ export const getTestRequestsForBilling = async (req, res) => {
     }
 
     const testRequests = await TestRequest.find(filter)
-      .populate('patientId', 'name email contactNumber')
+      .populate('patientId', 'name email contactNumber uhid')
       .populate('doctorId', 'firstName lastName')
       .populate('centerId', 'name centerCode')
       .sort({ createdAt: -1 })
@@ -666,7 +666,7 @@ export const scheduleSampleCollection = async (req, res) => {
       },
       { new: true, runValidators: true }
     ).populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },
@@ -705,7 +705,7 @@ export const startTesting = async (req, res) => {
       },
       { new: true, runValidators: true }
     ).populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },
@@ -745,7 +745,7 @@ export const completeTesting = async (req, res) => {
       },
       { new: true, runValidators: true }
     ).populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },
@@ -810,7 +810,7 @@ export const sendLabReport = async (req, res) => {
     await testRequest.save();
 
     await testRequest.populate([
-      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address' },
+      { path: 'patientId', select: 'firstName lastName name email phone contactNumber address uhid' },
       { path: 'doctorId', select: 'firstName lastName name email' },
       { path: 'assignedTo', select: 'firstName lastName name email' },
       { path: 'centerId', select: 'name centerCode' },

@@ -78,10 +78,10 @@ router.get(
 
 // @route   PUT /api/billing/:id
 // @desc    Update billing record
-// @access  Private (Receptionist only)
+// @access  Private (Receptionist, Admin)
 router.put(
   '/:id',
-  authorizeRoles('Receptionist'),
+  authorizeRoles('Receptionist', 'Admin'),
   updateBilling
 );
 

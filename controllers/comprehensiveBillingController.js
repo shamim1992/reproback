@@ -136,9 +136,27 @@ export const createComprehensiveBilling = async (req, res) => {
     const billing = new ComprehensiveBilling(billingData);
     await billing.save();
 
+    // Update patient's doctor assignment
+    // This assigns the doctor to the patient when a consultation bill is created
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      patientId, 
+      {
+        doctorId: doctorId,
+        updatedBy: req.user.id
+      },
+      { new: true }
+    ).populate('doctorId', 'firstName lastName');
+    
+    console.log('✅ Patient doctor assignment updated:', {
+      patientId,
+      doctorId,
+      patientName: updatedPatient?.name,
+      assignedDoctor: updatedPatient?.doctorId ? `${updatedPatient.doctorId.firstName} ${updatedPatient.doctorId.lastName}` : 'Not populated'
+    });
+
     // Populate the created billing
     await billing.populate([
-      { path: 'patient', select: 'name email contactNumber gender dateOfBirth age' },
+      { path: 'patient', select: 'name email contactNumber gender dateOfBirth age uhid' },
       { path: 'doctor', select: 'firstName lastName department' },
       { path: 'center', select: 'name centerCode address contactNumber email website' },
       { path: 'createdBy', select: 'firstName lastName' }
@@ -752,10 +770,15 @@ export const getComprehensiveBillingRecords = async (req, res) => {
     // Build filter object
     let filter = { isActive: true };
     
-    // Filter by center for non-superAdmin users
-    if (req.user.role !== 'superAdmin') {
+    // Filter by center
+    if (req.query.center && req.query.center !== 'all') {
+      // If center is specified in query, use it (for superAdmin filtering)
+      filter.center = req.query.center;
+    } else if (req.user.role !== 'superAdmin') {
+      // For non-superAdmin users, always filter by their assigned center
       filter.center = req.user.centerId;
     }
+    // If superAdmin and no center specified, show all centers
 
     // Filter by payment status
     if (req.query.paymentStatus) {
@@ -785,17 +808,29 @@ export const getComprehensiveBillingRecords = async (req, res) => {
       };
     }
 
-    // Search by bill number or patient name
+    // Search by bill number, patient name, or UHID
     if (req.query.search) {
       const searchRegex = new RegExp(req.query.search, 'i');
+      
+      // First, find patients matching the search criteria
+      const matchingPatients = await Patient.find({
+        $or: [
+          { name: searchRegex },
+          { uhid: searchRegex }
+        ]
+      }).select('_id');
+      
+      const patientIds = matchingPatients.map(p => p._id);
+      
+      // Search by bill number or matching patient IDs
       filter.$or = [
         { billNumber: searchRegex },
-        { 'patient.name': searchRegex }
+        { patient: { $in: patientIds } }
       ];
     }
 
     const billingRecords = await ComprehensiveBilling.find(filter)
-      .populate('patient', 'name email contactNumber gender dateOfBirth age')
+      .populate('patient', 'name email contactNumber gender dateOfBirth age uhid')
       .populate('doctor', 'firstName lastName department')
       .populate('center', 'name centerCode address contactNumber email website')
       .populate('createdBy', 'firstName lastName')
@@ -863,7 +898,7 @@ export const getComprehensiveBillingById = async (req, res) => {
     }
 
     const billing = await ComprehensiveBilling.findOne(filter)
-      .populate('patient', 'name email contactNumber dateOfBirth gender address')
+      .populate('patient', 'name email contactNumber dateOfBirth gender address uhid')
       .populate('doctor', 'firstName lastName email')
       .populate('center', 'name centerCode address contactNumber')
       .populate('createdBy', 'firstName lastName')
@@ -949,15 +984,68 @@ export const updateComprehensiveBilling = async (req, res) => {
       });
     }
 
-    // Add updatedBy field
-    req.body.updatedBy = req.user.id;
+    // Prepare update data
+    const updateData = {
+      updatedBy: req.user.id,
+      updatedAt: new Date()
+    };
+
+    // Update fees if provided
+    if (req.body.registrationFee !== undefined) {
+      updateData.registrationFee = req.body.registrationFee;
+    }
+    if (req.body.consultationFee !== undefined) {
+      updateData.consultationFee = req.body.consultationFee;
+    }
+    if (req.body.serviceCharges !== undefined) {
+      updateData.serviceCharges = req.body.serviceCharges;
+    }
+    if (req.body.discount !== undefined) {
+      updateData.discount = req.body.discount;
+    }
+    if (req.body.tax !== undefined) {
+      updateData.tax = req.body.tax;
+    }
+    if (req.body.notes !== undefined) {
+      updateData.notes = req.body.notes;
+    }
+    if (req.body.status !== undefined) {
+      updateData.status = req.body.status;
+    }
+
+    // Recalculate totals
+    const regFee = updateData.registrationFee?.amount || existingBilling.registrationFee?.amount || 0;
+    const consFee = updateData.consultationFee?.amount || existingBilling.consultationFee?.amount || 0;
+    
+    let serviceChargesTotal = 0;
+    const services = updateData.serviceCharges || existingBilling.serviceCharges || [];
+    services.forEach(service => {
+      serviceChargesTotal += service.totalAmount || (service.amount * service.quantity) || 0;
+    });
+
+    const subtotal = regFee + consFee + serviceChargesTotal;
+    const discount = updateData.discount !== undefined ? updateData.discount : existingBilling.discount || 0;
+    const tax = updateData.tax !== undefined ? updateData.tax : existingBilling.tax || 0;
+    const totalAmount = subtotal - discount + tax;
+
+    updateData.subtotal = subtotal;
+    updateData.totalAmount = totalAmount;
+
+    // If no payment has been made yet, update remaining amount
+    if (existingBilling.paidAmount === 0) {
+      updateData.remainingAmount = totalAmount;
+    } else {
+      updateData.remainingAmount = totalAmount - existingBilling.paidAmount;
+    }
+
+    console.log('Updating billing with data:', updateData);
 
     const updatedBilling = await ComprehensiveBilling.findByIdAndUpdate(
       id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     )
-      .populate('patient', 'name email contactNumber')
+      .populate('patient', 'name email contactNumber uhid')
       .populate('doctor', 'firstName lastName')
       .populate('center', 'name centerCode')
       .populate('createdBy', 'firstName lastName')

@@ -322,7 +322,7 @@ export const getBillingRecords = async (req, res) => {
 
     const billingRecords = await Billing.find(filter)
       .populate('testRequest', 'testType status')
-      .populate('patient', 'name email contactNumber')
+      .populate('patient', 'name email contactNumber uhid')
       .populate('doctor', 'firstName lastName')
       .populate('center', 'name centerCode')
       .populate('createdBy', 'firstName lastName')
@@ -378,7 +378,7 @@ export const getBillingById = async (req, res) => {
 
     const billing = await Billing.findOne(filter)
       .populate('testRequest', 'testType status notes')
-      .populate('patient', 'name email contactNumber dateOfBirth gender address')
+      .populate('patient', 'name email contactNumber dateOfBirth gender address uhid')
       .populate('doctor', 'firstName lastName email')
       .populate('center', 'name centerCode address contactNumber')
       .populate('createdBy', 'firstName lastName')
@@ -435,16 +435,47 @@ export const updateBilling = async (req, res) => {
       });
     }
 
-    // Add updatedBy field
-    req.body.updatedBy = req.user.id;
+    // Check if billing can be updated
+    if (existingBilling.paymentStatus === 'paid' || existingBilling.paymentStatus === 'cancelled' || existingBilling.paymentStatus === 'refunded') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update bills that are paid, cancelled, or refunded'
+      });
+    }
+
+    // Prepare update data
+    const updateData = {
+      updatedBy: req.user.id,
+      updatedAt: new Date()
+    };
+
+    // Update fields if provided
+    if (req.body.totalAmount !== undefined) {
+      updateData.totalAmount = req.body.totalAmount;
+      updateData.remainingAmount = req.body.totalAmount - (existingBilling.paidAmount || 0);
+    }
+    if (req.body.discount !== undefined) {
+      updateData.discount = req.body.discount;
+    }
+    if (req.body.tax !== undefined) {
+      updateData.tax = req.body.tax;
+    }
+    if (req.body.notes !== undefined) {
+      updateData.notes = req.body.notes;
+    }
+    if (req.body.paymentStatus !== undefined) {
+      updateData.paymentStatus = req.body.paymentStatus;
+    }
+
+    console.log('Updating billing with data:', updateData);
 
     const updatedBilling = await Billing.findByIdAndUpdate(
       id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     )
       .populate('testRequest', 'testType status')
-      .populate('patient', 'name email contactNumber')
+      .populate('patient', 'name email contactNumber uhid')
       .populate('doctor', 'firstName lastName')
       .populate('center', 'name centerCode')
       .populate('createdBy', 'firstName lastName')
@@ -1147,6 +1178,7 @@ export const getBillingAnalytics = async (req, res) => {
           $group: {
             _id: '$patient',
             patientName: { $first: '$patientInfo.name' },
+            patientUhid: { $first: '$patientInfo.uhid' },
             centerName: { $first: '$centerInfo.name' },
             totalBills: { $sum: 1 },
             totalAmount: { $sum: '$totalAmount' },
@@ -1166,7 +1198,7 @@ export const getBillingAnalytics = async (req, res) => {
         ...(centerId && centerId !== 'all' ? { center: new mongoose.Types.ObjectId(centerId) } : 
            (req.user.role !== 'superAdmin' && req.user.role !== 'Super Consultant' ? { center: req.user.centerId } : {}))
       })
-        .populate('patient', 'name email contactNumber')
+        .populate('patient', 'name email contactNumber uhid')
         .populate('center', 'name centerCode')
         .populate('doctor', 'firstName lastName')
         .populate('paymentHistory.processedBy', 'firstName lastName')
@@ -1298,6 +1330,7 @@ export const getBillingAnalytics = async (req, res) => {
         return {
           patientId: item._id,
           patientName: item.patientName?.[0] || 'Unknown Patient',
+          uhid: item.patientUhid?.[0] || 'N/A',
           centerName: item.centerName?.[0] || 'Unknown Center',
           totalBills: item.totalBills,
           totalAmount: item.totalAmount,
@@ -1311,6 +1344,10 @@ export const getBillingAnalytics = async (req, res) => {
         _id: bill._id,
         billNumber: bill.billNumber,
         patientName: bill.patient?.name || 'Unknown',
+        patient: {
+          uhid: bill.patient?.uhid || 'N/A',
+          name: bill.patient?.name || 'Unknown'
+        },
         centerName: bill.center?.name || 'Unknown',
         doctorName: bill.doctor ? `${bill.doctor.firstName} ${bill.doctor.lastName}` : 'Unknown',
         totalAmount: bill.totalAmount,

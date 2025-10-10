@@ -5,6 +5,9 @@ import Patient from "../models/patientModel.js";
 
 export const createPatient = async (req, res) => {
   try {
+    console.log('Create patient request body:', req.body);
+    console.log('User creating patient:', req.user);
+    
     const { 
       name, 
       dateOfBirth, 
@@ -19,11 +22,24 @@ export const createPatient = async (req, res) => {
       doctorId // This will be provided by receptionist, ignored if user is doctor
     } = req.body;
 
+    // Validate required fields
+    if (!name || !dateOfBirth || !gender || !occupation || !address || !contactNumber || !email) {
+      return res.status(400).json({ 
+        message: 'Missing required fields. Please fill in all required information.' 
+      });
+    }
+
     // Get the current user who is creating the patient
     const currentUser = await User.findById(req.user.id).populate('centerId');
     if (!currentUser) {
       return res.status(404).json({ message: 'User not found' });
     }
+    
+    console.log('Current user:', {
+      id: currentUser._id,
+      role: currentUser.role,
+      centerId: currentUser.centerId
+    });
 
     // Always use the current user's assigned center
     if (!currentUser.centerId) {
@@ -56,16 +72,25 @@ export const createPatient = async (req, res) => {
     }
     
     const uhid = `${centerCode}${sequentialNumber.toString().padStart(4, '0')}`;
+    
+    console.log('Generated UHID:', uhid);
+    console.log('Center code:', centerCode);
+    console.log('Sequential number:', sequentialNumber);
 
     // Doctor assignment logic based on user role
     let assignedDoctorId = null;
 
+    console.log('Doctor assignment - User role:', currentUser.role);
+    console.log('Doctor assignment - Provided doctorId:', doctorId);
+
     if (currentUser.role === 'Doctor') {
       // If doctor is creating patient, auto-assign themselves
       assignedDoctorId = currentUser._id;
-    } else if (currentUser.role === 'Receptionist' || currentUser.role === 'Admin') {
+      console.log('Auto-assigning doctor (current user):', assignedDoctorId);
+    } else if (currentUser.role === 'Receptionist' || currentUser.role === 'Admin' || currentUser.role === 'superAdmin') {
       // If receptionist/admin is creating patient, use provided doctorId
       if (doctorId) {
+        console.log('Validating provided doctorId:', doctorId);
         // Validate that the doctor exists and belongs to the same center
         const doctor = await User.findOne({ 
           _id: doctorId, 
@@ -74,6 +99,8 @@ export const createPatient = async (req, res) => {
           isActive: true 
         });
         
+        console.log('Doctor found:', doctor ? `${doctor.firstName} ${doctor.lastName}` : 'Not found');
+        
         if (!doctor) {
           return res.status(400).json({ 
             message: 'Invalid doctor selected or doctor not available in your center' 
@@ -81,6 +108,9 @@ export const createPatient = async (req, res) => {
         }
         
         assignedDoctorId = doctorId;
+        console.log('Assigned doctorId:', assignedDoctorId);
+      } else {
+        console.log('No doctorId provided - patient will be unassigned');
       }
       // Note: doctorId is optional for receptionist/admin - they can create without assigning
     } else {
@@ -91,49 +121,75 @@ export const createPatient = async (req, res) => {
         });
       }
     }
+    
+    console.log('Final assignedDoctorId:', assignedDoctorId);
 
 
-    const patient = new Patient({
+    const patientData = {
       uhid,
       name: name.trim(),
       dateOfBirth,
       gender,
       occupation: occupation.trim(),
-      spouseName: spouseName.trim(),
-      spouseOccupation: spouseOccupation.trim(),
-      spouseDateOfBirth,
+      spouseName: spouseName ? spouseName.trim() : undefined,
+      spouseOccupation: spouseOccupation ? spouseOccupation.trim() : undefined,
+      spouseDateOfBirth: spouseDateOfBirth || undefined,
       address: address.trim(),
       contactNumber: contactNumber.trim(),
       email: email.toLowerCase().trim(),
       doctorId: assignedDoctorId, 
       center: center._id,
       createdBy: currentUser._id
-    });
+    };
+
+    console.log('Creating patient with data:', patientData);
+    console.log('Doctor ID being saved:', patientData.doctorId);
+
+    const patient = new Patient(patientData);
 
     const savedPatient = await patient.save();
+    
+    console.log('Patient saved successfully with UHID:', savedPatient.uhid);
+    console.log('Patient saved with doctorId:', savedPatient.doctorId);
     
     // Populate the saved patient before returning
     await savedPatient.populate('center', 'name address contactNumber centerCode');
     await savedPatient.populate('createdBy', 'firstName lastName email');
     await savedPatient.populate('doctorId', 'firstName lastName email'); // Populate doctor info
     
+    console.log('Populated patient doctor info:', savedPatient.doctorId);
+    console.log('Returning patient to frontend:', {
+      uhid: savedPatient.uhid,
+      name: savedPatient.name,
+      doctorId: savedPatient.doctorId
+    });
+    
     res.status(201).json(savedPatient);
   } catch (error) {
     console.error('Error creating patient:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     
     // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(e => e.message);
+      console.error('Validation errors:', errors);
       return res.status(400).json({ message: errors.join(', ') });
     }
     
     // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyValue)[0];
+      console.error('Duplicate key error on field:', field);
       return res.status(400).json({ message: `Patient with this ${field} already exists` });
     }
     
-    res.status(500).json({ message: 'Failed to create patient' });
+    res.status(500).json({ 
+      message: 'Failed to create patient',
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
