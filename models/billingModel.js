@@ -119,7 +119,7 @@ const billingSchema = new mongoose.Schema({
     },
     paymentMethod: {
       type: String,
-      enum: ['cash', 'card', 'upi', 'netbanking', 'cheque', 'insurance'],
+      enum: ['cash', 'card', 'upi', 'netbanking', 'cheque', 'insurance', 'adjustment'],
       required: true
     },
     paymentDate: {

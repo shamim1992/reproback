@@ -14,6 +14,7 @@ import {
   cancelBilling,
   processRefund
 } from '../controllers/billingController.js';
+import { adjustBillingPayment } from '../controllers/paymentAdjustmentController.js';
 import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
 import Billing from '../models/billingModel.js';
 
@@ -78,19 +79,19 @@ router.get(
 
 // @route   PUT /api/billing/:id
 // @desc    Update billing record
-// @access  Private (Receptionist, Admin)
+// @access  Private (Admin only)
 router.put(
   '/:id',
-  authorizeRoles('Receptionist', 'Admin'),
+  authorizeRoles('Admin'),
   updateBilling
 );
 
 // @route   POST /api/billing/:id/payment
 // @desc    Process payment for billing
-// @access  Private (Receptionist only)
+// @access  Private (Receptionist, Admin, Accountant, superAdmin)
 router.post(
   '/:id/payment',
-  authorizeRoles('Receptionist'),
+  authorizeRoles('Receptionist', 'Admin', 'Accountant', 'superAdmin'),
   processPayment
 );
 
@@ -110,6 +111,15 @@ router.post(
   '/:id/refund',
   authorizeRoles('Receptionist', 'Admin', 'superAdmin'),
   processRefund
+);
+
+// @route   POST /api/billing/:id/adjust-payment
+// @desc    Adjust payment amount (for correction of mistakes)
+// @access  Private (Admin, Accountant, superAdmin only - NOT Receptionist)
+router.post(
+  '/:id/adjust-payment',
+  authorizeRoles('Admin', 'Accountant', 'superAdmin'),
+  adjustBillingPayment
 );
 
 // @route   PUT /api/billing/:id/workflow

@@ -152,7 +152,7 @@ const comprehensiveBillingSchema = new mongoose.Schema({
     },
     paymentMethod: {
       type: String,
-      enum: ['cash', 'card', 'upi', 'netbanking', 'cheque', 'insurance'],
+      enum: ['cash', 'card', 'upi', 'netbanking', 'cheque', 'insurance', 'adjustment'],
       required: true
     },
     paymentDate: {
@@ -287,13 +287,13 @@ const comprehensiveBillingSchema = new mongoose.Schema({
   workflow: {
     currentStage: {
       type: String,
-      enum: ['billing', 'preview', 'payment', 'consultation', 'completed'],
+      enum: ['billing', 'preview', 'payment', 'consultation', 'completed', 'cancelled', 'refunded'],
       default: 'billing'
     },
     stages: [{
       stage: {
         type: String,
-        enum: ['billing', 'preview', 'payment', 'consultation', 'completed']
+        enum: ['billing', 'preview', 'payment', 'consultation', 'completed', 'cancelled', 'refunded']
       },
       status: {
         type: String,

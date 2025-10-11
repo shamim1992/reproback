@@ -12,6 +12,7 @@ import {
   updateComprehensiveBilling,
   deleteComprehensiveBilling
 } from '../controllers/comprehensiveBillingController.js';
+import { adjustComprehensiveBillingPayment } from '../controllers/paymentAdjustmentController.js';
 import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware.js';
 import ComprehensiveBilling from '../models/comprehensiveBillingModel.js';
 
@@ -49,10 +50,10 @@ router.get(
 
 // @route   PUT /api/comprehensive-billing/:id
 // @desc    Update comprehensive billing record
-// @access  Private (Receptionist, Admin)
+// @access  Private (Admin only)
 router.put(
   '/:id',
-  authorizeRoles('Receptionist', 'Admin'),
+  authorizeRoles('Admin'),
   updateComprehensiveBilling
 );
 
@@ -85,10 +86,10 @@ router.post(
 
 // @route   POST /api/comprehensive-billing/:id/payment
 // @desc    Process payment for comprehensive billing
-// @access  Private (Receptionist, Admin)
+// @access  Private (Receptionist, Admin, Accountant, superAdmin)
 router.post(
   '/:id/payment',
-  authorizeRoles('Receptionist', 'Admin'),
+  authorizeRoles('Receptionist', 'Admin', 'Accountant', 'superAdmin'),
   processComprehensivePayment
 );
 
@@ -108,6 +109,15 @@ router.post(
   '/:id/refund',
   authorizeRoles('Receptionist', 'Admin'),
   processComprehensiveRefund
+);
+
+// @route   POST /api/comprehensive-billing/:id/adjust-payment
+// @desc    Adjust payment amount (for correction of mistakes)
+// @access  Private (Admin, Accountant, superAdmin only - NOT Receptionist)
+router.post(
+  '/:id/adjust-payment',
+  authorizeRoles('Admin', 'Accountant', 'superAdmin'),
+  adjustComprehensiveBillingPayment
 );
 
 // @route   POST /api/comprehensive-billing/:id/mark-viewed

@@ -8,10 +8,12 @@ import patientHistoryRoutes from './patientHistoryRoutes.js';
 import testRequestRoutes from './testRequestRoutes.js';
 import labStaffRoutes from './labStaffRoutes.js';
 import superConsultantRoutes from './superConsultantRoutes.js';
+import superadminRoutes from './superadminRoutes.js';
 import billingRoutes from './billingRoutes.js';
 import receptionistBillingRoutes from './receptionistBillingRoutes.js';
 import comprehensiveBillingRoutes from './comprehensiveBillingRoutes.js';
 import testMasterRoutes from './testMasterRoutes.js';
+import medicationRoutes from './medicationRoutes.js';
 import { authenticateJWT } from '../middleware/authMiddleware.js';
 
 
@@ -39,10 +41,12 @@ router.use('/patient-history', patientHistoryRoutes);
 router.use('/test-requests', testRequestRoutes);
 router.use('/lab-staff', labStaffRoutes);
 router.use('/super-consultant', superConsultantRoutes);
+router.use('/superadmin', superadminRoutes);
 router.use('/billing', billingRoutes);
 router.use('/receptionist-billing', receptionistBillingRoutes);
 router.use('/comprehensive-billing', comprehensiveBillingRoutes);
 router.use('/test-master', testMasterRoutes);
+router.use('/medications', medicationRoutes);
 
 
 
