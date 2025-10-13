@@ -23,32 +23,34 @@ router.post(
 
 // @route   GET /api/receptionist-billing
 // @desc    Get receptionist billing records with pagination and filters
-// @access  Private (Receptionist, Admin, superAdmin)
+// @access  Private (Receptionist, Admin, superAdmin, Accountant)
 router.get(
   '/',
-  authorizeRoles('Receptionist', 'Admin', 'superAdmin'),
+  authorizeRoles('Receptionist', 'Admin', 'superAdmin', 'Accountant'),
   getReceptionistBillingRecords
 );
 
 // @route   GET /api/receptionist-billing/stats
 // @desc    Get receptionist billing statistics
-// @access  Private (Receptionist, Admin, superAdmin)
+// @access  Private (Receptionist, Admin, superAdmin, Accountant)
 router.get(
   '/stats',
-  authorizeRoles('Receptionist', 'Admin', 'superAdmin'),
+  authorizeRoles('Receptionist', 'Admin', 'superAdmin', 'Accountant'),
   getReceptionistBillingStats
 );
 
 // @route   GET /api/receptionist-billing/:id
 // @desc    Get single receptionist billing record by ID
-// @access  Private (Receptionist, Admin, superAdmin)
+// @access  Private (Receptionist, Admin, superAdmin, Accountant)
 router.get(
   '/:id',
-  authorizeRoles('Receptionist', 'Admin', 'superAdmin'),
+  authorizeRoles('Receptionist', 'Admin', 'superAdmin', 'Accountant'),
   getReceptionistBillingById
 );
 
 export default router;
+
+
 
 
 

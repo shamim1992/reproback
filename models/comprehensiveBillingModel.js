@@ -29,7 +29,7 @@ const comprehensiveBillingSchema = new mongoose.Schema({
     unique: true
   },
   
-  // Registration fee (first time registration)
+  // Registration fee (first time registration only)
   registrationFee: {
     amount: {
       type: Number,
@@ -37,13 +37,18 @@ const comprehensiveBillingSchema = new mongoose.Schema({
       min: 0,
       default: 0
     },
-    isFirstTime: {
-      type: Boolean,
-      default: true
+    patientType: {
+      type: String,
+      enum: ['OP', 'IP'],
+      default: 'OP'
     },
     description: {
       type: String,
-      default: 'First Time Registration Fee'
+      default: 'Registration'
+    },
+    isApplicable: {
+      type: Boolean,
+      default: true
     }
   },
   
@@ -57,12 +62,17 @@ const comprehensiveBillingSchema = new mongoose.Schema({
     },
     consultationType: {
       type: String,
-      enum: ['general', 'specialist', 'follow_up', 'emergency'],
-      default: 'general'
+      enum: ['op_general', 'ip_general', 'op_audio', 'op_video', 'op_followup'],
+      default: 'op_general'
+    },
+    patientType: {
+      type: String,
+      enum: ['OP', 'IP'],
+      default: 'OP'
     },
     description: {
       type: String,
-      default: 'Doctor Consultation Fee'
+      default: 'Consultation'
     }
   },
   
@@ -75,6 +85,11 @@ const comprehensiveBillingSchema = new mongoose.Schema({
     serviceCode: {
       type: String,
       required: true
+    },
+    patientType: {
+      type: String,
+      enum: ['OP', 'IP'],
+      default: 'OP'
     },
     amount: {
       type: Number,
@@ -363,8 +378,9 @@ comprehensiveBillingSchema.pre('save', async function(next) {
       });
     }
     
-    // Calculate subtotal
-    this.subtotal = (this.registrationFee.amount || 0) + 
+    // Calculate subtotal (only include registration fee if applicable)
+    const regFee = this.registrationFee.isApplicable ? (this.registrationFee.amount || 0) : 0;
+    this.subtotal = regFee + 
                    (this.consultationFee.amount || 0) + 
                    serviceChargesTotal;
     

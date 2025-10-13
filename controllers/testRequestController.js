@@ -398,15 +398,15 @@ export const getTestRequestsForLabStaff = async (req, res) => {
 
     let filter = {};
     
-    // Filter by center for non-superAdmin users
-    if (req.user.role !== 'superAdmin' && req.user.centerId) {
-      filter.centerId = req.user.centerId;
-      console.log('Filtering by center:', req.user.centerId);
-    } else if (req.user.role === 'superAdmin') {
-      console.log('SuperAdmin access - showing all centers');
-    } else {
-      console.log('No centerId found for user');
-    }
+  // Filter by center for non-superAdmin users
+  if (req.user.role === 'superAdmin') {
+    console.log('SuperAdmin access - showing all centers');
+  } else if (req.user.centerId) {
+    filter.centerId = req.user.centerId;
+    console.log('Filtering by center for user role:', req.user.role, 'centerId:', req.user.centerId);
+  } else {
+    console.log('No centerId found for user role:', req.user.role);
+  }
 
     console.log('Search filter:', filter);
     
@@ -501,6 +501,16 @@ export const getDashboardStats = async (req, res) => {
           $in: ['Billing_Paid', 'Superadmin_Approved', 'Assigned', 'Sample_Collection_Scheduled', 'Sample_Collected', 'In_Lab_Testing', 'Testing_Completed', 'Report_Generated', 'Report_Sent', 'Completed', 'Needs_Additional_Tests', 'Review_Rejected']
         }
       };
+    }
+
+    // Filter by center for non-superAdmin users
+    if (req.user.role === 'superAdmin') {
+      console.log('SuperAdmin access - showing stats for all centers');
+    } else if (req.user.centerId) {
+      baseFilter.centerId = req.user.centerId;
+      console.log('Filtering stats by center for user role:', req.user.role, 'centerId:', req.user.centerId);
+    } else {
+      console.log('No centerId found for user role:', req.user.role);
     }
 
     const totalRequests = await TestRequest.countDocuments(baseFilter);

@@ -22,8 +22,8 @@ export const createPatient = async (req, res) => {
       doctorId // This will be provided by receptionist, ignored if user is doctor
     } = req.body;
 
-    // Validate required fields
-    if (!name || !dateOfBirth || !gender || !occupation || !address || !contactNumber || !email) {
+    // Validate required fields (email is now optional)
+    if (!name || !dateOfBirth || !gender || !occupation || !address || !contactNumber) {
       return res.status(400).json({ 
         message: 'Missing required fields. Please fill in all required information.' 
       });
@@ -50,10 +50,12 @@ export const createPatient = async (req, res) => {
     
     const center = currentUser.centerId;
 
-    // Check if patient with same email already exists
-    const existingPatient = await Patient.findOne({ email: email.toLowerCase() });
-    if (existingPatient) {
-      return res.status(400).json({ message: 'Patient with this email already exists' });
+    // Check if patient with same email already exists (only if email is provided)
+    if (email && email.trim()) {
+      const existingPatient = await Patient.findOne({ email: email.toLowerCase() });
+      if (existingPatient) {
+        return res.status(400).json({ message: 'Patient with this email already exists' });
+      }
     }
 
     // Generate UHID: CenterCode (4 digits) + Sequential Number (4 digits)
@@ -136,7 +138,7 @@ export const createPatient = async (req, res) => {
       spouseDateOfBirth: spouseDateOfBirth || undefined,
       address: address.trim(),
       contactNumber: contactNumber.trim(),
-      email: email.toLowerCase().trim(),
+      email: email && email.trim() ? email.toLowerCase().trim() : undefined, // Email is optional
       doctorId: assignedDoctorId, 
       center: center._id,
       createdBy: currentUser._id

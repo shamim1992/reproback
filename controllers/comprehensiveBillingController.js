@@ -52,8 +52,9 @@ export const createComprehensiveBilling = async (req, res) => {
     if (typeof registrationFee === 'number') {
       regFeeData = {
         amount: registrationFee,
-        isFirstTime: true,
-        description: 'First Time Registration Fee'
+        patientType: 'OP',
+        description: 'Registration',
+        isApplicable: registrationFee > 0
       };
     } else if (registrationFee && typeof registrationFee === 'object') {
       if (typeof registrationFee.amount !== 'number' || registrationFee.amount < 0) {
@@ -62,7 +63,13 @@ export const createComprehensiveBilling = async (req, res) => {
           message: 'Registration fee amount must be a non-negative number'
         });
       }
-      regFeeData = registrationFee;
+      // Ensure new fields are present, use defaults if not
+      regFeeData = {
+        amount: registrationFee.amount,
+        patientType: registrationFee.patientType || 'OP',
+        description: registrationFee.description || 'Registration',
+        isApplicable: registrationFee.isApplicable !== undefined ? registrationFee.isApplicable : (registrationFee.amount > 0)
+      };
     }
 
     // Handle consultation fee - support both simple number and object format
@@ -70,8 +77,9 @@ export const createComprehensiveBilling = async (req, res) => {
     if (typeof consultationFee === 'number') {
       consFeeData = {
         amount: consultationFee,
-        consultationType: 'general',
-        description: 'Doctor Consultation Fee'
+        consultationType: 'op_general',
+        patientType: 'OP',
+        description: 'Consultation'
       };
     } else if (consultationFee && typeof consultationFee === 'object') {
       if (typeof consultationFee.amount !== 'number' || consultationFee.amount < 0) {
@@ -80,7 +88,13 @@ export const createComprehensiveBilling = async (req, res) => {
           message: 'Consultation fee amount must be a non-negative number'
         });
       }
-      consFeeData = consultationFee;
+      // Ensure new fields are present
+      consFeeData = {
+        amount: consultationFee.amount,
+        consultationType: consultationFee.consultationType || 'op_general',
+        patientType: consultationFee.patientType || 'OP',
+        description: consultationFee.description || 'Consultation'
+      };
     }
 
     // Validate and format service charges
@@ -102,6 +116,7 @@ export const createComprehensiveBilling = async (req, res) => {
         formattedServiceCharges.push({
           serviceName: service.serviceName,
           serviceCode: service.serviceCode || `SVC${i + 1}`,
+          patientType: service.patientType || 'OP',
           amount,
           quantity,
           totalAmount,
@@ -136,22 +151,32 @@ export const createComprehensiveBilling = async (req, res) => {
     const billing = new ComprehensiveBilling(billingData);
     await billing.save();
 
-    // Update patient's doctor assignment
+    // Update patient's doctor assignment and billing status
     // This assigns the doctor to the patient when a consultation bill is created
+    const updateData = {
+      doctorId: doctorId,
+      updatedBy: req.user.id
+    };
+
+    // If this is the first bill for the patient, mark them as billed
+    if (!patient.hasBeenBilled) {
+      updateData.hasBeenBilled = true;
+      updateData.firstBillingDate = new Date();
+    }
+
     const updatedPatient = await Patient.findByIdAndUpdate(
       patientId, 
-      {
-        doctorId: doctorId,
-        updatedBy: req.user.id
-      },
+      updateData,
       { new: true }
     ).populate('doctorId', 'firstName lastName');
     
-    console.log('✅ Patient doctor assignment updated:', {
+    console.log('✅ Patient doctor assignment and billing status updated:', {
       patientId,
       doctorId,
       patientName: updatedPatient?.name,
-      assignedDoctor: updatedPatient?.doctorId ? `${updatedPatient.doctorId.firstName} ${updatedPatient.doctorId.lastName}` : 'Not populated'
+      assignedDoctor: updatedPatient?.doctorId ? `${updatedPatient.doctorId.firstName} ${updatedPatient.doctorId.lastName}` : 'Not populated',
+      hasBeenBilled: updatedPatient?.hasBeenBilled,
+      firstBillingDate: updatedPatient?.firstBillingDate
     });
 
     // Populate the created billing

@@ -54,8 +54,9 @@ const patientSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: true,
+      required: false, // Email is now optional
       unique: true,
+      sparse: true, // Allow multiple null/undefined emails
       trim: true,
       lowercase: true,
       match: [
@@ -81,6 +82,17 @@ const patientSchema = new mongoose.Schema(
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+
+    // Track if patient has been billed before (for registration fee logic)
+    hasBeenBilled: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Track first billing date
+    firstBillingDate: {
+      type: Date,
     },
   },
   { 

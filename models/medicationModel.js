@@ -64,3 +64,4 @@ const Medication = mongoose.model('Medication', medicationSchema);
 
 export default Medication;
 
+

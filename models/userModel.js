@@ -43,6 +43,12 @@ const userSchema = new mongoose.Schema({
     },
     required: true,
   },
+  department: {
+    type: String,
+    trim: true,
+    required: false,
+    default: '',
+  },
   centerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Center',

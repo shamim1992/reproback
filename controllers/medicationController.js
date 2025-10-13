@@ -200,3 +200,4 @@ export const discontinueMedication = async (req, res) => {
   }
 };
 
+

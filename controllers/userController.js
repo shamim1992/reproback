@@ -4,9 +4,9 @@ import bcrypt from 'bcryptjs';
 
 // Create user with center assignment logic
 export const createUser = async (req, res) => {
-  const { firstName, lastName, username, email, password, role, phone, centerCode } = req.body;
+  const { firstName, lastName, username, email, password, role, phone, centerCode, department } = req.body;
 
-  console.log('Create user request:', { firstName, lastName, username, email, role, phone, centerCode });
+  console.log('Create user request:', { firstName, lastName, username, email, role, phone, centerCode, department });
   console.log('Request user:', req.user);
   console.log('Role validation - checking role:', role);
 
@@ -111,6 +111,7 @@ export const createUser = async (req, res) => {
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       role,
+      department: department ? department.trim() : '',
       phone: phone.trim(),
       centerId: centerToAssign ? centerToAssign._id : undefined,
       isActive: true

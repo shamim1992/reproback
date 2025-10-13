@@ -78,8 +78,8 @@ export const createReceptionistBilling = async (req, res) => {
 
     // Populate the response
     const populatedBilling = await ReceptionistBilling.findById(billing._id)
-      .populate('patientId', 'name contactNumber email dateOfBirth')
-      .populate('doctorId', 'firstName lastName specialization')
+      .populate('patientId', 'name contactNumber email dateOfBirth uhid')
+      .populate('doctorId', 'firstName lastName specialization department')
       .populate('centerId', 'name centerCode')
       .populate('processedBy', 'firstName lastName');
 
@@ -144,8 +144,8 @@ export const getReceptionistBillingRecords = async (req, res) => {
     }
 
     const billingRecords = await ReceptionistBilling.find(filter)
-      .populate('patientId', 'name contactNumber email')
-      .populate('doctorId', 'firstName lastName specialization')
+      .populate('patientId', 'name contactNumber email uhid')
+      .populate('doctorId', 'firstName lastName specialization department')
       .populate('centerId', 'name centerCode')
       .populate('processedBy', 'firstName lastName')
       .sort({ billingDate: -1 })
@@ -281,8 +281,8 @@ export const getReceptionistBillingById = async (req, res) => {
     }
 
     const billing = await ReceptionistBilling.findOne(filter)
-      .populate('patientId', 'name contactNumber email dateOfBirth')
-      .populate('doctorId', 'firstName lastName specialization')
+      .populate('patientId', 'name contactNumber email dateOfBirth uhid')
+      .populate('doctorId', 'firstName lastName specialization department')
       .populate('centerId', 'name centerCode')
       .populate('processedBy', 'firstName lastName');
 
