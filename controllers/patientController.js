@@ -481,6 +481,136 @@ export const getPatientsByDoctor = async (req, res) => {
   }
 }
 
+// Get patients assigned to a specific doctor with consultation status
+export const getPatientsByDoctorWithStatus = async (req, res) => {
+  try {
+    console.log('=== getPatientsByDoctorWithStatus API called ===');
+    const doctorId = req.user.id; // Get doctor ID from authenticated user
+    const user = await User.findById(doctorId).populate('centerId');
+
+    console.log('Doctor details:', {
+      doctorId,
+      role: user?.role,
+      centerId: user?.centerId?._id,
+      centerName: user?.centerId?.name
+    });
+
+    if (!user || user.role !== 'Doctor') {
+      return res.status(403).json({ 
+        message: 'Access denied. Only doctors can view their assigned patients.' 
+      });
+    }
+
+    if (!user.centerId) {
+      return res.status(404).json({ 
+        message: 'No center found for this doctor' 
+      });
+    }
+
+    // Import ComprehensiveBilling model
+    const ComprehensiveBilling = (await import('../models/comprehensiveBillingModel.js')).default;
+
+    // First, let's see ALL billing records for this doctor
+    const allBillings = await ComprehensiveBilling.find({
+      doctor: doctorId,
+      center: user.centerId._id,
+      isActive: true
+    }).select('patient consultationStatus createdAt paymentStatus').lean();
+
+    console.log('All billings for doctor:', {
+      count: allBillings.length,
+      billings: allBillings.map(b => ({
+        id: b._id,
+        patient: b.patient,
+        paymentStatus: b.paymentStatus,
+        consultationStatus: b.consultationStatus,
+        createdAt: b.createdAt
+      }))
+    });
+
+    // Find all comprehensive billing records with payment (paid or partial) for this doctor
+    const paidBillings = await ComprehensiveBilling.find({
+      doctor: doctorId,
+      center: user.centerId._id,
+      paymentStatus: { $in: ['paid', 'partial'] },
+      isActive: true
+    }).select('patient consultationStatus createdAt paymentStatus').lean();
+
+    console.log('Found paid billings:', {
+      count: paidBillings.length,
+      billings: paidBillings.map(b => ({
+        id: b._id,
+        patient: b.patient,
+        paymentStatus: b.paymentStatus,
+        consultationStatus: b.consultationStatus
+      }))
+    });
+
+    // Extract unique patient IDs from paid billings
+    const paidPatientIds = [...new Set(paidBillings.map(b => b.patient.toString()))];
+
+    // Find patients assigned to this doctor who have paid consultation fees
+    const patients = await Patient.find({ 
+      _id: { $in: paidPatientIds },
+      center: user.centerId._id 
+    })
+      .populate('center', 'name address contactNumber')
+      .populate('createdBy', 'firstName lastName email')
+      .populate('updatedBy', 'firstName lastName email')
+      .populate('doctorId', 'firstName lastName email')
+      .sort({ createdAt: -1 }); // Sort by newest first
+
+    // Add consultation status to each patient
+    const patientsWithStatus = patients.map(patient => {
+      const patientBillings = paidBillings.filter(b => b.patient.toString() === patient._id.toString());
+      const latestBilling = patientBillings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      
+      console.log(`Patient ${patient.name} (${patient._id}):`, {
+        totalBillings: patientBillings.length,
+        latestBilling: latestBilling ? {
+          id: latestBilling._id,
+          consultationStatus: latestBilling.consultationStatus,
+          createdAt: latestBilling.createdAt
+        } : null,
+        allBillings: patientBillings.map(b => ({
+          id: b._id,
+          consultationStatus: b.consultationStatus,
+          createdAt: b.createdAt
+        }))
+      });
+      
+      return {
+        ...patient.toObject(),
+        consultationStatus: latestBilling?.consultationStatus || 'pending',
+        lastConsultationDate: latestBilling?.createdAt || null
+      };
+    });
+    
+    console.log('Doctor patients with status:', {
+      doctorId,
+      totalBillings: paidBillings.length,
+      totalPatients: patients.length,
+      patientsWithStatus: patientsWithStatus.length,
+      consultationStatuses: patientsWithStatus.map(p => ({
+        name: p.name,
+        status: p.consultationStatus,
+        id: p._id
+      })),
+      sampleBilling: paidBillings[0] ? {
+        id: paidBillings[0]._id,
+        patient: paidBillings[0].patient,
+        consultationStatus: paidBillings[0].consultationStatus,
+        createdAt: paidBillings[0].createdAt
+      } : null
+    });
+    
+    res.status(200).json(patientsWithStatus);
+  } catch (error) {
+    console.error('Error fetching patients by doctor with status:', error);
+    res.status(500).json({ message: 'Failed to fetch patients by doctor with status' });
+  }
+}
+
 export const togglePatientStatus = async (req, res) => {
   try {
     const { id } = req.params;

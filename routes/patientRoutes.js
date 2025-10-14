@@ -12,7 +12,8 @@ import {
   getActivePatients,
   togglePatientStatus,
   getDoctorsByCenter, // New function for fetching doctors
-  getPatientsByDoctor // New function for fetching patients by doctor
+  getPatientsByDoctor, // New function for fetching patients by doctor
+  getPatientsByDoctorWithStatus // New function for fetching patients by doctor with consultation status
 } from '../controllers/patientController.js';
 
 const router = express.Router();
@@ -29,6 +30,9 @@ router.get('/user/patients', authenticateJWT, getPatientsByUser);
 
 // Get patients assigned to current doctor
 router.get('/doctor/patients', authenticateJWT, authorizeRoles('Doctor'), getPatientsByDoctor);
+
+// Get patients assigned to current doctor with consultation status
+router.get('/doctor/patients-with-status', authenticateJWT, authorizeRoles('Doctor'), getPatientsByDoctorWithStatus);
 
 // Get doctors by center (for Receptionist/Admin to assign to patients)
 router.get('/doctors/available', authenticateJWT, authorizeRoles('Receptionist', 'Admin', 'superAdmin'), getDoctorsByCenter);

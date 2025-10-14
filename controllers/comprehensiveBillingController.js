@@ -855,7 +855,7 @@ export const getComprehensiveBillingRecords = async (req, res) => {
     }
 
     const billingRecords = await ComprehensiveBilling.find(filter)
-      .populate('patient', 'name email contactNumber gender dateOfBirth age uhid')
+      .populate('patient', 'name email contactNumber gender dateOfBirth age uhid spouseName')
       .populate('doctor', 'firstName lastName department')
       .populate('center', 'name centerCode address contactNumber email website')
       .populate('createdBy', 'firstName lastName')
